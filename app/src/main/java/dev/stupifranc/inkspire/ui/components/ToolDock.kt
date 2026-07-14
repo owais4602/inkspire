@@ -10,7 +10,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,17 +32,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.stupifranc.inkspire.model.BrushFamilyChoice
 import dev.stupifranc.inkspire.model.Tool
-import dev.stupifranc.inkspire.ui.components.icons.ClearIcon
 import dev.stupifranc.inkspire.ui.components.icons.EraserIcon
 import dev.stupifranc.inkspire.ui.components.icons.ExportIcon
 import dev.stupifranc.inkspire.ui.components.icons.HighlighterIcon
 import dev.stupifranc.inkspire.ui.components.icons.MarkerIcon
 import dev.stupifranc.inkspire.ui.components.icons.MoreIcon
 import dev.stupifranc.inkspire.ui.components.icons.PenIcon
-import dev.stupifranc.inkspire.ui.components.icons.RedoIcon
 import dev.stupifranc.inkspire.ui.components.icons.ResizeIcon
 import dev.stupifranc.inkspire.ui.components.icons.SymmetryIcon
-import dev.stupifranc.inkspire.ui.components.icons.UndoIcon
 import kotlin.math.roundToInt
 
 private enum class DockExpansion { NONE, SIZE, SYMMETRY, MORE }
@@ -59,8 +55,6 @@ fun ToolDock(
     symmetryEnabled: Boolean,
     symmetrySectors: Int,
     symmetryMirror: Boolean,
-    canUndo: Boolean,
-    canRedo: Boolean,
     onSelectBrush: (BrushFamilyChoice) -> Unit,
     onSelectEraser: () -> Unit,
     onSizeChange: (Float) -> Unit,
@@ -68,9 +62,6 @@ fun ToolDock(
     onSymmetrySectorsChange: (Int) -> Unit,
     onSymmetryMirrorChange: (Boolean) -> Unit,
     onColorClick: () -> Unit,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
-    onClear: () -> Unit,
     onResize: () -> Unit,
     onExport: () -> Unit,
     modifier: Modifier = Modifier,
@@ -108,11 +99,6 @@ fun ToolDock(
                             onMirrorChange = onSymmetryMirrorChange,
                         )
                         DockExpansion.MORE -> MorePanel(
-                            canUndo = canUndo,
-                            canRedo = canRedo,
-                            onUndo = onUndo,
-                            onRedo = onRedo,
-                            onClear = onClear,
                             onResize = onResize,
                             onExport = onExport,
                         )
@@ -203,56 +189,11 @@ private fun SymmetryPanel(
 
 @Composable
 private fun MorePanel(
-    canUndo: Boolean,
-    canRedo: Boolean,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
-    onClear: () -> Unit,
     onResize: () -> Unit,
     onExport: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        DockIconButton(selected = false, enabled = canUndo, onClick = onUndo) { tint -> UndoIcon(tint) }
-        DockIconButton(selected = false, enabled = canRedo, onClick = onRedo) { tint -> RedoIcon(tint) }
-        DockIconButton(selected = false, onClick = onClear) { tint -> ClearIcon(tint) }
         DockIconButton(selected = false, onClick = onResize) { tint -> ResizeIcon(tint) }
         DockIconButton(selected = false, onClick = onExport) { tint -> ExportIcon(tint) }
     }
-}
-
-@Composable
-private fun DockIconButton(
-    selected: Boolean,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    icon: @Composable (tint: Color) -> Unit,
-) {
-    val tint = when {
-        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-        selected -> MaterialTheme.colorScheme.onPrimaryContainer
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val background = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
-
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .padding(horizontal = 2.dp)
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(background)
-            .clickable(enabled = enabled, onClick = onClick),
-    ) {
-        icon(tint)
-    }
-}
-
-@Composable
-private fun DockDivider() {
-    Spacer(
-        modifier = Modifier
-            .padding(horizontal = 4.dp)
-            .size(width = 1.dp, height = 24.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant),
-    )
 }

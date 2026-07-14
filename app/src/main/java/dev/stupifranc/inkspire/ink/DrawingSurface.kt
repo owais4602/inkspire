@@ -16,9 +16,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke as StrokeStyle
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
@@ -126,15 +130,42 @@ fun DrawingSurface(
         },
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawCanvasBackground(canvasSpec, viewport)
+            val pageTopLeft = viewport.documentToScreen(Point(0f, 0f))
+            val pageBottomRight = viewport.documentToScreen(Point(canvasSpec.width, canvasSpec.height))
+            val page = Rect(pageTopLeft.x, pageTopLeft.y, pageBottomRight.x, pageBottomRight.y)
+            val pageVisibleAsObject =
+                page.left > 0f || page.top > 0f || page.right < size.width || page.bottom < size.height
+
+            drawRect(WORKSPACE_COLOR)
+            drawRect(color = Color(canvasSpec.backgroundColorArgb), topLeft = page.topLeft, size = page.size)
+
             val worldToScreen = viewport.toWorldToScreenMatrix()
             drawIntoCanvas { canvas ->
                 strokes.forEach { entry ->
                     renderer.draw(canvas.nativeCanvas, entry.stroke, worldToScreen)
                 }
             }
+
+            // The page reads as paper: ink is only fully visible on it. Strokes stranded outside
+            // (possible after a canvas shrink) stay faintly visible under a workspace-colored veil
+            // so they remain discoverable and erasable rather than silently clipped away.
+            if (pageVisibleAsObject) {
+                clipRect(page.left, page.top, page.right, page.bottom, clipOp = ClipOp.Difference) {
+                    drawRect(WORKSPACE_COLOR.copy(alpha = OUTSIDE_PAGE_VEIL_ALPHA))
+                    drawPageShadow(page)
+                }
+                drawRect(
+                    color = PAGE_EDGE_COLOR,
+                    topLeft = page.topLeft,
+                    size = page.size,
+                    style = StrokeStyle(width = 1.dp.toPx()),
+                )
+            }
+
             if (isSymmetryActive) {
-                drawSymmetryGuides(symmetryConfig, viewport)
+                clipRect(page.left, page.top, page.right, page.bottom) {
+                    drawSymmetryGuides(symmetryConfig, viewport)
+                }
             }
         }
 
@@ -204,14 +235,28 @@ fun DrawingSurface(
     }
 }
 
-private fun DrawScope.drawCanvasBackground(canvasSpec: CanvasSpec, viewport: Viewport) {
-    val topLeft = viewport.documentToScreen(Point(0f, 0f))
-    val bottomRight = viewport.documentToScreen(Point(canvasSpec.width, canvasSpec.height))
-    drawRect(
-        color = Color(canvasSpec.backgroundColorArgb),
-        topLeft = Offset(topLeft.x, topLeft.y),
-        size = Size(bottomRight.x - topLeft.x, bottomRight.y - topLeft.y),
-    )
+// Neutral studio-gray workspace behind the page (Procreate/Figma-style). Revisit for dark theme in M6.
+private val WORKSPACE_COLOR = Color(0xFFE3E1DE)
+private val PAGE_EDGE_COLOR = Color.Black.copy(alpha = 0.08f)
+private const val OUTSIDE_PAGE_VEIL_ALPHA = 0.78f
+private const val SHADOW_STEPS = 4
+private const val SHADOW_STEP_ALPHA = 0.05f
+
+/**
+ * Faux drop shadow: stacked expanding translucent rects (cheap, works on every API level,
+ * no per-frame offscreen layer). Caller must already have clipped out the page itself.
+ */
+private fun DrawScope.drawPageShadow(page: Rect) {
+    val spread = 10.dp.toPx()
+    val dropY = 3.dp.toPx()
+    for (i in 1..SHADOW_STEPS) {
+        val outset = spread * i / SHADOW_STEPS
+        drawRect(
+            color = Color.Black.copy(alpha = SHADOW_STEP_ALPHA),
+            topLeft = Offset(page.left - outset, page.top - outset + dropY),
+            size = Size(page.width + 2 * outset, page.height + 2 * outset),
+        )
+    }
 }
 
 private val SYMMETRY_GUIDE_COLOR = Color(0xFF6650a4)

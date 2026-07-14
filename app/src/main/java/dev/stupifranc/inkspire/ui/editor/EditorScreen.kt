@@ -33,6 +33,7 @@ import dev.stupifranc.inkspire.ink.toInkBrush
 import dev.stupifranc.inkspire.model.Tool
 import dev.stupifranc.inkspire.ui.components.CanvasResizeOverlay
 import dev.stupifranc.inkspire.ui.components.ColorPicker
+import dev.stupifranc.inkspire.ui.components.HistoryPill
 import dev.stupifranc.inkspire.ui.components.ToolDock
 import kotlin.math.roundToInt
 
@@ -106,6 +107,17 @@ fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
+            HistoryPill(
+                canUndo = viewModel.canUndo,
+                canRedo = viewModel.canRedo,
+                onUndo = viewModel::undo,
+                onRedo = viewModel::redo,
+                onClear = viewModel::clear,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp),
+            )
+
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -130,8 +142,6 @@ fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
                 symmetryEnabled = viewModel.symmetryEnabled,
                 symmetrySectors = viewModel.symmetrySectors,
                 symmetryMirror = viewModel.symmetryMirror,
-                canUndo = viewModel.canUndo,
-                canRedo = viewModel.canRedo,
                 onSelectBrush = { family ->
                     viewModel.selectBrushFamily(family)
                     viewModel.selectTool(Tool.PEN)
@@ -142,9 +152,6 @@ fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
                 onSymmetrySectorsChange = viewModel::changeSymmetrySectors,
                 onSymmetryMirrorChange = viewModel::changeSymmetryMirror,
                 onColorClick = { showColorPicker = true },
-                onUndo = viewModel::undo,
-                onRedo = viewModel::redo,
-                onClear = viewModel::clear,
                 onResize = { isResizeMode = true },
                 onExport = { showExportDialog = true },
                 modifier = Modifier
