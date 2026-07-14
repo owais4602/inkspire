@@ -1,5 +1,11 @@
 package dev.stupifranc.inkspire.ui.editor
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -26,8 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.stupifranc.inkspire.ink.CanvasExporter
 import dev.stupifranc.inkspire.ink.DrawingSurface
 import dev.stupifranc.inkspire.ink.toInkBrush
 import dev.stupifranc.inkspire.model.Tool
@@ -42,7 +51,39 @@ import kotlin.math.roundToInt
 fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
     var showColorPicker by remember { mutableStateOf(false) }
     var isResizeMode by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var pendingExportScale by remember { mutableStateOf<Int?>(null) }
     val inkBrush = remember(viewModel.brushSpec) { viewModel.brushSpec.toInkBrush() }
+    val context = LocalContext.current
+
+    fun exportAndShare(scale: Int) {
+        val bitmap = CanvasExporter.renderBitmap(viewModel.canvasSpec, viewModel.strokes, scale)
+        val uri = CanvasExporter.saveToGallery(context, bitmap) ?: return
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Share drawing"))
+    }
+
+    val storagePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val scale = pendingExportScale
+        pendingExportScale = null
+        if (granted && scale != null) exportAndShare(scale)
+    }
+
+    fun requestExport(scale: Int) {
+        showExportDialog = false
+        val needsPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            pendingExportScale = scale
+            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            exportAndShare(scale)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
@@ -50,6 +91,7 @@ fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
             TextButton(onClick = viewModel::redo, enabled = viewModel.canRedo) { Text("Redo") }
             TextButton(onClick = viewModel::clear) { Text("Clear") }
             TextButton(onClick = { isResizeMode = true }) { Text("Resize") }
+            TextButton(onClick = { showExportDialog = true }) { Text("Export") }
         }
 
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
@@ -164,6 +206,24 @@ fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
                 }
             }
         }
+    }
+
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = { Text("Export as image") },
+            text = { Text("Renders the entire canvas, not just what's visible on screen.") },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { requestExport(1) }) { Text("1x") }
+                    TextButton(onClick = { requestExport(2) }) { Text("2x") }
+                    TextButton(onClick = { requestExport(4) }) { Text("4x") }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 
     if (showColorPicker) {
