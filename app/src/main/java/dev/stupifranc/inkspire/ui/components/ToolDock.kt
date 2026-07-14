@@ -1,0 +1,258 @@
+package dev.stupifranc.inkspire.ui.components
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import dev.stupifranc.inkspire.model.BrushFamilyChoice
+import dev.stupifranc.inkspire.model.Tool
+import dev.stupifranc.inkspire.ui.components.icons.ClearIcon
+import dev.stupifranc.inkspire.ui.components.icons.EraserIcon
+import dev.stupifranc.inkspire.ui.components.icons.ExportIcon
+import dev.stupifranc.inkspire.ui.components.icons.HighlighterIcon
+import dev.stupifranc.inkspire.ui.components.icons.MarkerIcon
+import dev.stupifranc.inkspire.ui.components.icons.MoreIcon
+import dev.stupifranc.inkspire.ui.components.icons.PenIcon
+import dev.stupifranc.inkspire.ui.components.icons.RedoIcon
+import dev.stupifranc.inkspire.ui.components.icons.ResizeIcon
+import dev.stupifranc.inkspire.ui.components.icons.SymmetryIcon
+import dev.stupifranc.inkspire.ui.components.icons.UndoIcon
+import kotlin.math.roundToInt
+
+private enum class DockExpansion { NONE, SIZE, SYMMETRY, MORE }
+
+/** Compact, icon-first floating dock (Apple Notes markup-toolbar style) — replaces the old stacked text-button rows. */
+@Composable
+fun ToolDock(
+    tool: Tool,
+    brushFamily: BrushFamilyChoice,
+    colorArgb: Int,
+    size: Float,
+    sizeRange: ClosedFloatingPointRange<Float>,
+    symmetryEnabled: Boolean,
+    symmetrySectors: Int,
+    symmetryMirror: Boolean,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    onSelectBrush: (BrushFamilyChoice) -> Unit,
+    onSelectEraser: () -> Unit,
+    onSizeChange: (Float) -> Unit,
+    onToggleSymmetry: () -> Unit,
+    onSymmetrySectorsChange: (Int) -> Unit,
+    onSymmetryMirrorChange: (Boolean) -> Unit,
+    onColorClick: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onClear: () -> Unit,
+    onResize: () -> Unit,
+    onExport: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expansion by remember { mutableStateOf(DockExpansion.NONE) }
+
+    fun toggle(target: DockExpansion) {
+        expansion = if (expansion == target) DockExpansion.NONE else target
+    }
+
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        AnimatedVisibility(
+            visible = expansion != DockExpansion.NONE,
+            enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+            exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 6.dp,
+                modifier = Modifier.padding(bottom = 8.dp),
+            ) {
+                Box(modifier = Modifier.padding(16.dp)) {
+                    when (expansion) {
+                        DockExpansion.SIZE -> SizeSlider(
+                            size = size,
+                            range = sizeRange,
+                            onSizeChange = onSizeChange,
+                            modifier = Modifier.width(240.dp),
+                        )
+                        DockExpansion.SYMMETRY -> SymmetryPanel(
+                            sectors = symmetrySectors,
+                            mirror = symmetryMirror,
+                            onSectorsChange = onSymmetrySectorsChange,
+                            onMirrorChange = onSymmetryMirrorChange,
+                        )
+                        DockExpansion.MORE -> MorePanel(
+                            canUndo = canUndo,
+                            canRedo = canRedo,
+                            onUndo = onUndo,
+                            onRedo = onRedo,
+                            onClear = onClear,
+                            onResize = onResize,
+                            onExport = onExport,
+                        )
+                        DockExpansion.NONE -> Unit
+                    }
+                }
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 8.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                DockIconButton(selected = tool == Tool.PEN && brushFamily == BrushFamilyChoice.PRESSURE_PEN, onClick = {
+                    if (tool == Tool.PEN && brushFamily == BrushFamilyChoice.PRESSURE_PEN) toggle(DockExpansion.SIZE)
+                    else { onSelectBrush(BrushFamilyChoice.PRESSURE_PEN); expansion = DockExpansion.NONE }
+                }) { tint -> PenIcon(tint) }
+
+                DockIconButton(selected = tool == Tool.PEN && brushFamily == BrushFamilyChoice.MARKER, onClick = {
+                    if (tool == Tool.PEN && brushFamily == BrushFamilyChoice.MARKER) toggle(DockExpansion.SIZE)
+                    else { onSelectBrush(BrushFamilyChoice.MARKER); expansion = DockExpansion.NONE }
+                }) { tint -> MarkerIcon(tint) }
+
+                DockIconButton(selected = tool == Tool.PEN && brushFamily == BrushFamilyChoice.HIGHLIGHTER, onClick = {
+                    if (tool == Tool.PEN && brushFamily == BrushFamilyChoice.HIGHLIGHTER) toggle(DockExpansion.SIZE)
+                    else { onSelectBrush(BrushFamilyChoice.HIGHLIGHTER); expansion = DockExpansion.NONE }
+                }) { tint -> HighlighterIcon(tint) }
+
+                DockIconButton(selected = tool == Tool.ERASER, onClick = {
+                    if (tool == Tool.ERASER) toggle(DockExpansion.SIZE)
+                    else { onSelectEraser(); expansion = DockExpansion.NONE }
+                }) { tint -> EraserIcon(tint) }
+
+                DockDivider()
+
+                DockIconButton(selected = symmetryEnabled, onClick = {
+                    val turningOn = !symmetryEnabled
+                    onToggleSymmetry()
+                    expansion = if (turningOn) DockExpansion.SYMMETRY else DockExpansion.NONE
+                }) { tint -> SymmetryIcon(tint) }
+
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 6.dp)
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color(colorArgb))
+                        .clickable(onClick = onColorClick),
+                )
+
+                DockDivider()
+
+                DockIconButton(selected = expansion == DockExpansion.MORE, onClick = { toggle(DockExpansion.MORE) }) { tint -> MoreIcon(tint) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SymmetryPanel(
+    sectors: Int,
+    mirror: Boolean,
+    onSectorsChange: (Int) -> Unit,
+    onMirrorChange: (Boolean) -> Unit,
+) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Sectors: $sectors", modifier = Modifier.padding(end = 8.dp))
+            Slider(
+                value = sectors.toFloat(),
+                onValueChange = { onSectorsChange(it.roundToInt()) },
+                valueRange = 1f..12f,
+                steps = 10,
+                modifier = Modifier.width(160.dp),
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Mirror", modifier = Modifier.padding(end = 8.dp))
+            Switch(checked = mirror, onCheckedChange = onMirrorChange)
+        }
+    }
+}
+
+@Composable
+private fun MorePanel(
+    canUndo: Boolean,
+    canRedo: Boolean,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onClear: () -> Unit,
+    onResize: () -> Unit,
+    onExport: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        DockIconButton(selected = false, enabled = canUndo, onClick = onUndo) { tint -> UndoIcon(tint) }
+        DockIconButton(selected = false, enabled = canRedo, onClick = onRedo) { tint -> RedoIcon(tint) }
+        DockIconButton(selected = false, onClick = onClear) { tint -> ClearIcon(tint) }
+        DockIconButton(selected = false, onClick = onResize) { tint -> ResizeIcon(tint) }
+        DockIconButton(selected = false, onClick = onExport) { tint -> ExportIcon(tint) }
+    }
+}
+
+@Composable
+private fun DockIconButton(
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    icon: @Composable (tint: Color) -> Unit,
+) {
+    val tint = when {
+        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+        selected -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val background = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .padding(horizontal = 2.dp)
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(background)
+            .clickable(enabled = enabled, onClick = onClick),
+    ) {
+        icon(tint)
+    }
+}
+
+@Composable
+private fun DockDivider() {
+    Spacer(
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .size(width = 1.dp, height = 24.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant),
+    )
+}
