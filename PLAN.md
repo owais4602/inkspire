@@ -92,7 +92,7 @@ app/src/main/java/dev/stupifranc/inkspire/
 ## Milestones (each ends buildable, tested, committed)
 
 - [x] 0. **Scaffold** — Gradle project skeleton, wrapper, version catalog, git init, PLAN.md.
-- [ ] 1. **Skeleton + it draws** — Gradle project (pinned versions), editor screen, wet/dry pipeline, one brush, undo/redo/clear. Tests: `Affine2Test`, `HistoryStackTest`. *The latency benchmark moment.*
+- [x] 1. **Skeleton + it draws** — Gradle project (pinned versions), editor screen, wet/dry pipeline, one brush, undo/redo/clear. Tests: `Affine2Test`, `HistoryStackTest`. *The latency benchmark moment.* `./gradlew test assembleDebug` green (16/16 unit tests). On-device latency check still pending — no phone was attached during this milestone; run the manual checklist once one is.
 - [ ] 2. **Brushes & color** — brush picker, size slider, HSV color picker + recents, whole-stroke eraser. Tests: color conversion + `EditorViewModelTest` erase flows.
 - [ ] 3. **Symmetry mode** — `SymmetryEngine`, live kaleidoscope (2–12 way, mirror), sector guides, draggable center. Tests: `SymmetryEngineTest`.
 - [ ] 4. **Canvas control** — zoom/pan/fit, resize dialog with anchoring, background color/gradient. Tests: `ResizeAnchorTest`.
@@ -101,7 +101,9 @@ app/src/main/java/dev/stupifranc/inkspire/
 
 ## Deviations from original plan
 
-(none yet)
+- **Dry layer is a Compose `Canvas` + `drawIntoCanvas`, not a custom `android.view.View`.** Verified against the real 1.0.0 jars: `CanvasStrokeRenderer.draw(android.graphics.Canvas, Stroke, Matrix)` accepts any raw `Canvas`, so a custom View subclass isn't needed — `drawIntoCanvas { it.nativeCanvas }` inside a Compose `Canvas` composable is simpler and avoids View/Compose interop boilerplate for a case that doesn't need it.
+- **`model/CanvasSpec.kt` and `model/BrushSpec.kt` are introduced when first used (M4 and M2 respectively), not upfront in M1.** Only `model/StrokeEntry.kt` was needed for M1; adding the others now would be dead code ahead of the milestones that actually consume them.
+- Confirmed via jar/source inspection (not memory) before writing Ink integration code: `InProgressStrokesView.startStroke/addToStroke/finishStroke/cancelStroke` signatures, `CanvasStrokeRenderer.create()`, and `Brush.createWithColorIntArgb(family, colorIntArgb, size, epsilon)` param order. No `InProgressStrokes` Compose composable exists in 1.0.0 (a docs summary hallucinated one) — the wet layer is genuinely `InProgressStrokesView` via `AndroidView`.
 
 ## Verification
 
