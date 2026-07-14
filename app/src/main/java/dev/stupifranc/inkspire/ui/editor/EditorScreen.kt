@@ -30,6 +30,7 @@ import dev.stupifranc.inkspire.model.Tool
 import dev.stupifranc.inkspire.ui.components.BrushPicker
 import dev.stupifranc.inkspire.ui.components.ColorPicker
 import dev.stupifranc.inkspire.ui.components.SizeSlider
+import dev.stupifranc.inkspire.ui.components.SymmetryControls
 
 @Composable
 fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
@@ -66,6 +67,18 @@ fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             )
+
+            SymmetryControls(
+                enabled = viewModel.symmetryEnabled,
+                sectors = viewModel.symmetrySectors,
+                mirror = viewModel.symmetryMirror,
+                onToggleEnabled = viewModel::toggleSymmetryEnabled,
+                onSectorsChange = viewModel::changeSymmetrySectors,
+                onMirrorChange = viewModel::changeSymmetryMirror,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
         }
 
         Row(
@@ -96,8 +109,11 @@ fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
             tool = viewModel.tool,
             currentBrush = inkBrush,
             eraserPaddingPx = viewModel.brushSpec.size,
+            symmetryConfig = viewModel.symmetryConfig,
             onStrokesFinished = viewModel::onStrokesFinished,
             onErase = viewModel::eraseHits,
+            onCanvasSizeChanged = viewModel::onCanvasSizeChanged,
+            onSymmetryCenterChanged = viewModel::moveSymmetryCenter,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
