@@ -1,17 +1,27 @@
 package dev.stupifranc.inkspire.ui.editor
 
+import android.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.ink.strokes.Stroke
 import androidx.lifecycle.ViewModel
-import dev.stupifranc.inkspire.core.HistoryStack
-import dev.stupifranc.inkspire.core.UndoableCommand
+import dev.stupifranc.inkspire.core.EntryCollection
+import dev.stupifranc.inkspire.model.BrushFamilyChoice
+import dev.stupifranc.inkspire.model.BrushSpec
 import dev.stupifranc.inkspire.model.StrokeEntry
+import dev.stupifranc.inkspire.model.Tool
 import java.util.UUID
 
+private val DEFAULT_SIZES = mapOf(
+    BrushFamilyChoice.PRESSURE_PEN to 8f,
+    BrushFamilyChoice.MARKER to 14f,
+    BrushFamilyChoice.HIGHLIGHTER to 24f,
+)
+
 class EditorViewModel : ViewModel() {
-    private val history = HistoryStack()
+    private val collection = EntryCollection<StrokeEntry>()
+    private val sizeMemory = DEFAULT_SIZES.toMutableMap()
 
     var strokes by mutableStateOf<List<StrokeEntry>>(emptyList())
         private set
@@ -20,56 +30,71 @@ class EditorViewModel : ViewModel() {
     var canRedo by mutableStateOf(false)
         private set
 
+    var tool by mutableStateOf(Tool.PEN)
+        private set
+
+    var brushSpec by mutableStateOf(
+        BrushSpec(family = BrushFamilyChoice.PRESSURE_PEN, colorArgb = Color.BLACK, size = DEFAULT_SIZES.getValue(BrushFamilyChoice.PRESSURE_PEN))
+    )
+        private set
+
+    var recentColors by mutableStateOf<List<Int>>(emptyList())
+        private set
+
+    fun selectTool(newTool: Tool) {
+        tool = newTool
+    }
+
+    fun selectBrushFamily(family: BrushFamilyChoice) {
+        brushSpec = brushSpec.copy(family = family, size = sizeMemory.getValue(family))
+    }
+
+    fun setColor(colorArgb: Int) {
+        brushSpec = brushSpec.copy(colorArgb = colorArgb)
+    }
+
+    fun commitCurrentColorToRecents() {
+        val color = brushSpec.colorArgb
+        recentColors = (listOf(color) + recentColors.filterNot { it == color }).take(8)
+    }
+
+    fun setSize(size: Float) {
+        sizeMemory[brushSpec.family] = size
+        brushSpec = brushSpec.copy(size = size)
+    }
+
     fun onStrokesFinished(finished: List<Stroke>) {
         if (finished.isEmpty()) return
         val groupId = UUID.randomUUID().toString()
         val entries = finished.map { StrokeEntry(groupId = groupId, stroke = it) }
-        strokes = strokes + entries
-        history.push(AddStrokesCommand(entries))
-        syncFlags()
+        collection.add(entries)
+        sync()
+    }
+
+    fun eraseHits(hitIds: Set<String>) {
+        if (hitIds.isEmpty()) return
+        collection.erase(hitIds)
+        sync()
     }
 
     fun clear() {
-        if (strokes.isEmpty()) return
-        val previous = strokes
-        strokes = emptyList()
-        history.push(ClearCommand(previous))
-        syncFlags()
+        collection.clear()
+        sync()
     }
 
     fun undo() {
-        history.undo()
-        syncFlags()
+        collection.undo()
+        sync()
     }
 
     fun redo() {
-        history.redo()
-        syncFlags()
+        collection.redo()
+        sync()
     }
 
-    private fun syncFlags() {
-        canUndo = history.canUndo
-        canRedo = history.canRedo
-    }
-
-    private inner class AddStrokesCommand(private val entries: List<StrokeEntry>) : UndoableCommand {
-        override fun undo() {
-            val entryIds = entries.map { it.id }.toSet()
-            strokes = strokes.filterNot { it.id in entryIds }
-        }
-
-        override fun redo() {
-            strokes = strokes + entries
-        }
-    }
-
-    private inner class ClearCommand(private val previous: List<StrokeEntry>) : UndoableCommand {
-        override fun undo() {
-            strokes = previous
-        }
-
-        override fun redo() {
-            strokes = emptyList()
-        }
+    private fun sync() {
+        strokes = collection.entries
+        canUndo = collection.canUndo
+        canRedo = collection.canRedo
     }
 }
