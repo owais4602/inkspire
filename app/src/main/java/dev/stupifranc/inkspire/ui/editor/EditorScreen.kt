@@ -1,6 +1,7 @@
 package dev.stupifranc.inkspire.ui.editor
 
 import android.Manifest
+import android.app.Application
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -17,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.stupifranc.inkspire.ink.CanvasExporter
 import dev.stupifranc.inkspire.ink.DrawingSurface
@@ -38,13 +43,27 @@ import dev.stupifranc.inkspire.ui.components.ToolDock
 import kotlin.math.roundToInt
 
 @Composable
-fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
+fun EditorScreen(
+    drawingId: String,
+    viewModel: EditorViewModel = viewModel(
+        factory = EditorViewModel.factory(LocalContext.current.applicationContext as Application, drawingId),
+    ),
+) {
     var showColorPicker by remember { mutableStateOf(false) }
     var isResizeMode by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var pendingExportScale by remember { mutableStateOf<Int?>(null) }
     val inkBrush = remember(viewModel.brushSpec) { viewModel.brushSpec.toInkBrush() }
     val context = LocalContext.current
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) viewModel.saveNow()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     fun exportAndShare(scale: Int) {
         val bitmap = CanvasExporter.renderBitmap(viewModel.canvasSpec, viewModel.strokes, scale)

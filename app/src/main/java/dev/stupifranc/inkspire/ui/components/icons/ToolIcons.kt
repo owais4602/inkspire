@@ -164,6 +164,17 @@ fun ExportIcon(tint: Color, modifier: Modifier = Modifier) {
 }
 
 @Composable
+fun PlusIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx() * 1.3f, cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        drawLine(tint, Offset(w / 2f, h * 0.2f), Offset(w / 2f, h * 0.8f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.2f, h / 2f), Offset(w * 0.8f, h / 2f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
 fun MoreIcon(tint: Color, modifier: Modifier = Modifier) {
     IconCanvas(modifier) {
         val dotRadius = size.minDimension * 0.06f

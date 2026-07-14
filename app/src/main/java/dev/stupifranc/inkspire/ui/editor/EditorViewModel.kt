@@ -1,26 +1,41 @@
 package dev.stupifranc.inkspire.ui.editor
 
+import android.app.Application
 import android.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.ink.strokes.Stroke
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.stupifranc.inkspire.core.EntryCollection
 import dev.stupifranc.inkspire.core.Point
 import dev.stupifranc.inkspire.core.ResizeAnchor
 import dev.stupifranc.inkspire.core.SymmetryConfig
 import dev.stupifranc.inkspire.core.Viewport
+import dev.stupifranc.inkspire.data.DrawingRepository
+import dev.stupifranc.inkspire.data.RecentColorsStore
+import dev.stupifranc.inkspire.ink.CanvasExporter
+import dev.stupifranc.inkspire.ink.StrokeStore
 import dev.stupifranc.inkspire.ink.translatedBy
 import dev.stupifranc.inkspire.model.BrushFamilyChoice
 import dev.stupifranc.inkspire.model.BrushSpec
 import dev.stupifranc.inkspire.model.CanvasSpec
 import dev.stupifranc.inkspire.model.StrokeEntry
 import dev.stupifranc.inkspire.model.Tool
+import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val DEFAULT_SYMMETRY_SECTORS = 6
 private val SYMMETRY_SECTOR_RANGE = 1..12
+private const val AUTOSAVE_DEBOUNCE_MILLIS = 2000L
 
 private val DEFAULT_SIZES = mapOf(
     BrushFamilyChoice.PRESSURE_PEN to 8f,
@@ -28,9 +43,12 @@ private val DEFAULT_SIZES = mapOf(
     BrushFamilyChoice.HIGHLIGHTER to 24f,
 )
 
-class EditorViewModel : ViewModel() {
+class EditorViewModel(application: Application, private val drawingId: String) : AndroidViewModel(application) {
+    private val repository = DrawingRepository(File(application.filesDir, "drawings"))
+    private val recentColorsStore = RecentColorsStore(File(application.filesDir, "app_prefs"))
     private val collection = EntryCollection<StrokeEntry>()
     private val sizeMemory = DEFAULT_SIZES.toMutableMap()
+    private var autosaveJob: Job? = null
 
     var strokes by mutableStateOf<List<StrokeEntry>>(emptyList())
         private set
@@ -47,7 +65,7 @@ class EditorViewModel : ViewModel() {
     )
         private set
 
-    var recentColors by mutableStateOf<List<Int>>(emptyList())
+    var recentColors by mutableStateOf(recentColorsStore.load())
         private set
 
     var symmetryEnabled by mutableStateOf(false)
@@ -58,7 +76,7 @@ class EditorViewModel : ViewModel() {
         private set
     private var symmetryCenter by mutableStateOf<Point?>(null)
 
-    var canvasSpec by mutableStateOf(CanvasSpec(width = 0f, height = 0f, backgroundColorArgb = Color.WHITE))
+    var canvasSpec by mutableStateOf(loadInitialCanvasSpec())
         private set
     var viewport by mutableStateOf(Viewport())
         private set
@@ -66,6 +84,21 @@ class EditorViewModel : ViewModel() {
         private set
     var containerHeight by mutableStateOf(0f)
         private set
+
+    init {
+        repository.loadStrokes(drawingId)?.let { bytes ->
+            collection.load(StrokeStore.decode(bytes))
+            strokes = collection.entries
+            canUndo = collection.canUndo
+            canRedo = collection.canRedo
+        }
+    }
+
+    private fun loadInitialCanvasSpec(): CanvasSpec {
+        val meta = repository.listDrawings().find { it.id == drawingId }
+            ?: return CanvasSpec(width = 0f, height = 0f, backgroundColorArgb = Color.WHITE)
+        return CanvasSpec(width = meta.width, height = meta.height, backgroundColorArgb = meta.backgroundColorArgb)
+    }
 
     val symmetryConfig: SymmetryConfig
         get() = if (symmetryEnabled) {
@@ -131,10 +164,12 @@ class EditorViewModel : ViewModel() {
         symmetryCenter = symmetryCenter?.let { Point(it.x + offset.x, it.y + offset.y) }
         canvasSpec = canvasSpec.copy(width = newWidth, height = newHeight)
         viewport = viewport.clampedTo(newWidth, newHeight, containerWidth, containerHeight)
+        scheduleAutosave()
     }
 
     fun setCanvasBackground(colorArgb: Int) {
         canvasSpec = canvasSpec.copy(backgroundColorArgb = colorArgb)
+        scheduleAutosave()
     }
 
     fun selectTool(newTool: Tool) {
@@ -150,8 +185,7 @@ class EditorViewModel : ViewModel() {
     }
 
     fun commitCurrentColorToRecents() {
-        val color = brushSpec.colorArgb
-        recentColors = (listOf(color) + recentColors.filterNot { it == color }).take(8)
+        recentColors = recentColorsStore.commit(brushSpec.colorArgb)
     }
 
     fun setSize(size: Float) {
@@ -188,9 +222,42 @@ class EditorViewModel : ViewModel() {
         sync()
     }
 
+    /** Cancels any pending debounced autosave and saves immediately (e.g. on ON_STOP). */
+    fun saveNow() {
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch(Dispatchers.IO) { performSave(collection.entries, canvasSpec) }
+    }
+
+    private fun scheduleAutosave() {
+        autosaveJob?.cancel()
+        val entries = collection.entries
+        val spec = canvasSpec
+        autosaveJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(AUTOSAVE_DEBOUNCE_MILLIS)
+            performSave(entries, spec)
+        }
+    }
+
+    private fun performSave(entries: List<StrokeEntry>, spec: CanvasSpec) {
+        repository.saveStrokes(drawingId, StrokeStore.encode(entries))
+        repository.updateCanvasSpec(drawingId, spec.width, spec.height, spec.backgroundColorArgb)
+        if (spec.width > 0f && spec.height > 0f) {
+            val thumbnail = CanvasExporter.renderThumbnail(spec, entries)
+            repository.saveThumbnail(drawingId, CanvasExporter.toPngBytes(thumbnail))
+        }
+    }
+
     private fun sync() {
         strokes = collection.entries
         canUndo = collection.canUndo
         canRedo = collection.canRedo
+        scheduleAutosave()
+    }
+
+    companion object {
+        fun factory(application: Application, drawingId: String): ViewModelProvider.Factory =
+            viewModelFactory {
+                initializer { EditorViewModel(application, drawingId) }
+            }
     }
 }

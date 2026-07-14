@@ -14,6 +14,15 @@ class EntryCollection<T : Identifiable> {
     val canUndo: Boolean get() = history.canUndo
     val canRedo: Boolean get() = history.canRedo
 
+    /**
+     * Replaces every entry and resets undo/redo history (document load, not a user action —
+     * there is nothing meaningful to undo "back to" before a drawing was opened).
+     */
+    fun load(initial: List<T>) {
+        entries = initial
+        history.clear()
+    }
+
     fun add(newEntries: List<T>) {
         if (newEntries.isEmpty()) return
         entries = entries + newEntries

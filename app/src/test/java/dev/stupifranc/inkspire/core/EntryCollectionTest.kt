@@ -108,6 +108,18 @@ class EntryCollectionTest {
     }
 
     @Test
+    fun load_replacesEntriesAndResetsHistory() {
+        val collection = EntryCollection<FakeEntry>()
+        collection.add(listOf(FakeEntry("1", "a")))
+
+        collection.load(listOf(FakeEntry("10", "loaded"), FakeEntry("11", "loaded")))
+
+        assertThat(collection.entries.map { it.id }).containsExactly("10", "11").inOrder()
+        assertThat(collection.canUndo).isFalse()
+        assertThat(collection.canRedo).isFalse()
+    }
+
+    @Test
     fun transformAll_remapsEveryEntryWithoutTouchingHistory() {
         val collection = EntryCollection<FakeEntry>()
         collection.add(listOf(FakeEntry("1", "a"), FakeEntry("2", "b")))

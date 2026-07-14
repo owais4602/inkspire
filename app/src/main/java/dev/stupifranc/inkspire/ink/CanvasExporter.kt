@@ -12,14 +12,20 @@ import android.provider.MediaStore
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import dev.stupifranc.inkspire.model.CanvasSpec
 import dev.stupifranc.inkspire.model.StrokeEntry
+import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private const val THUMBNAIL_MAX_DIMENSION_PX = 320f
+
 /** Renders the full document (not just the visible viewport) and saves it as a PNG in the gallery. */
 object CanvasExporter {
 
-    fun renderBitmap(canvasSpec: CanvasSpec, strokes: List<StrokeEntry>, scale: Int): Bitmap {
+    fun renderBitmap(canvasSpec: CanvasSpec, strokes: List<StrokeEntry>, scale: Int): Bitmap =
+        renderBitmap(canvasSpec, strokes, scale.toFloat())
+
+    fun renderBitmap(canvasSpec: CanvasSpec, strokes: List<StrokeEntry>, scale: Float): Bitmap {
         val width = (canvasSpec.width * scale).toInt().coerceAtLeast(1)
         val height = (canvasSpec.height * scale).toInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -27,9 +33,22 @@ object CanvasExporter {
         canvas.drawColor(canvasSpec.backgroundColorArgb)
 
         val renderer = CanvasStrokeRenderer.create()
-        val worldToBitmap = Matrix().apply { setScale(scale.toFloat(), scale.toFloat()) }
+        val worldToBitmap = Matrix().apply { setScale(scale, scale) }
         strokes.forEach { entry -> renderer.draw(canvas, entry.stroke, worldToBitmap) }
         return bitmap
+    }
+
+    /** Small preview render for gallery thumbnails, downscaled to fit within [THUMBNAIL_MAX_DIMENSION_PX]. */
+    fun renderThumbnail(canvasSpec: CanvasSpec, strokes: List<StrokeEntry>): Bitmap {
+        val longestSide = maxOf(canvasSpec.width, canvasSpec.height, 1f)
+        val scale = (THUMBNAIL_MAX_DIMENSION_PX / longestSide).coerceAtMost(1f)
+        return renderBitmap(canvasSpec, strokes, scale)
+    }
+
+    fun toPngBytes(bitmap: Bitmap): ByteArray {
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        return out.toByteArray()
     }
 
     /** Saves [bitmap] as a new PNG in the Pictures/Inkspire gallery folder; returns its content URI. */
