@@ -104,12 +104,7 @@ app/src/main/java/dev/stupifranc/inkspire/
 
 ## Handoff notes — state as of 2026-07-15, next session starts here
 
-**Where things stand:** Milestones 0–5 complete and committed; M6's PNG-export slice done early; two rounds of cross-cutting UI polish done (floating ToolDock, then HistoryPill + paper-like canvas — see the two bullets above). 85/85 JVM tests green, latest commit `076a4d1`. **M5 (documents/persistence) has not yet had an on-device pass** — it was implemented and gate-passing but committed without the user driving the gallery/autosave flow by hand first; treat that as the top on-device verification priority alongside the green-tint bug below.
-
-**Open bug — green tint (highest priority, needs the user + their phone):** The user sees a green tint when drawing on the upper half of the screen. Prime suspect: `InProgressStrokesView`'s front-buffered rendering (it composites a special `SurfaceControl` layer directly to the display; device-specific color artifacts are a known class of front-buffer issue, and the tint appearing only in the actively-drawn region fits). Debug sequence, in order:
-1. While the tint is visible on the physical screen, grab `adb exec-out screencap -p`. Front-buffer layers are composited by display hardware, so a *clean* screenshot while the eye sees green confirms a composition artifact, not app drawing code.
-2. Set `useHighLatencyRenderHelper = true` on the view in `ink/DrawingSurface.kt` (verified to exist via `javap` on the real 1.0.0 `ink-authoring` jar — it swaps front-buffered rendering for the ordinary render path). If the tint vanishes, cause confirmed; then decide with the user whether the latency of the ordinary path is acceptable (likely fine for finger input) or keep front-buffering and try `eagerInit()` / a `maskPath` limiting the front-buffer region / checking whether the phone's HDR-vivid display mode changes it.
-3. Whatever the outcome, record it here as a deviation.
+**Where things stand:** Milestones 0–5 complete and committed; M6's PNG-export slice done early; two rounds of cross-cutting UI polish done (floating ToolDock, then HistoryPill + paper-like canvas — see the two bullets above). 85/85 JVM tests green, latest commit `076a4d1`. **M5 (documents/persistence) has not yet had an on-device pass** — it was implemented and gate-passing but committed without the user driving the gallery/autosave flow by hand first; treat that as the top on-device verification priority.
 
 **Might need a better way (known rough edges, deliberately accepted for now):**
 - **Wet strokes aren't clipped to the page** — a stroke started inside can trail outside until finger-lift, then dims on handoff to the dry layer. `InProgressStrokesView.maskPath` is the candidate fix, but its exact semantics (mask-in vs mask-out, coordinate space, pan/zoom updates) are unverified — inspect the jar/sources before using it, per this plan's standing rule.
@@ -119,10 +114,9 @@ app/src/main/java/dev/stupifranc/inkspire/
 - **Double-tap-to-fit still produces two stray dots** (accepted M4 tradeoff, undoable). If it ever graduates from annoyance to bug, the fix is delaying stroke start, which costs latency — decide with the user.
 
 **Plan ahead, in order:**
-1. **Green-tint debug session** (above) — do this first while the user is available with the phone.
-2. **M5 on-device pass** — gallery CRUD (create/rename/delete/duplicate), autosave-then-kill-and-relaunch (verifies both the 2s debounce and the `ON_STOP` immediate save), thumbnails rendering correctly in the grid.
-3. **M6 remainder** — gradient pen (`core/GradientPen` + `GradientPenTest` first), stylus-only toggle, dark theme (make workspace/page colors theme-aware then), app icon, haptic ticks.
-4. On-device confirmation debt: M4/M5/M6-export/UI-polish checks have never had a clean single-source pass (every attempt so far raced the user's own hand-testing on the same device — see M2/M4 notes, and M5 simply hasn't been tried on-device yet at all). Run the manual checklist in Verification below with the user's hands off the phone.
+1. **M5 on-device pass** — gallery CRUD (create/rename/delete/duplicate), autosave-then-kill-and-relaunch (verifies both the 2s debounce and the `ON_STOP` immediate save), thumbnails rendering correctly in the grid.
+2. **M6 remainder** — gradient pen (`core/GradientPen` + `GradientPenTest` first), stylus-only toggle, dark theme (make workspace/page colors theme-aware then), app icon, haptic ticks.
+3. On-device confirmation debt: M4/M5/M6-export/UI-polish checks have never had a clean single-source pass (every attempt so far raced the user's own hand-testing on the same device — see M2/M4 notes, and M5 simply hasn't been tried on-device yet at all). Run the manual checklist in Verification below with the user's hands off the phone.
 
 **Working agreements that remain in force:** JVM tests before implementation for `core/`+`data/` logic; one commit per milestone; verify `androidx.ink` APIs against the jars in `~/.gradle/caches/modules-2/files-2.1/androidx.ink/` (fetched doc summaries have hallucinated APIs twice); record every deviation here.
 
