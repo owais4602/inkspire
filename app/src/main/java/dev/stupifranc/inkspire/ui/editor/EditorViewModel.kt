@@ -8,9 +8,13 @@ import androidx.ink.strokes.Stroke
 import androidx.lifecycle.ViewModel
 import dev.stupifranc.inkspire.core.EntryCollection
 import dev.stupifranc.inkspire.core.Point
+import dev.stupifranc.inkspire.core.ResizeAnchor
 import dev.stupifranc.inkspire.core.SymmetryConfig
+import dev.stupifranc.inkspire.core.Viewport
+import dev.stupifranc.inkspire.ink.translatedBy
 import dev.stupifranc.inkspire.model.BrushFamilyChoice
 import dev.stupifranc.inkspire.model.BrushSpec
+import dev.stupifranc.inkspire.model.CanvasSpec
 import dev.stupifranc.inkspire.model.StrokeEntry
 import dev.stupifranc.inkspire.model.Tool
 import java.util.UUID
@@ -54,6 +58,15 @@ class EditorViewModel : ViewModel() {
         private set
     private var symmetryCenter by mutableStateOf<Point?>(null)
 
+    var canvasSpec by mutableStateOf(CanvasSpec(width = 0f, height = 0f, backgroundColorArgb = Color.WHITE))
+        private set
+    var viewport by mutableStateOf(Viewport())
+        private set
+    var containerWidth by mutableStateOf(0f)
+        private set
+    var containerHeight by mutableStateOf(0f)
+        private set
+
     val symmetryConfig: SymmetryConfig
         get() = if (symmetryEnabled) {
             SymmetryConfig(sectors = symmetrySectors, mirror = symmetryMirror, center = symmetryCenter ?: Point(0f, 0f))
@@ -77,10 +90,51 @@ class EditorViewModel : ViewModel() {
         symmetryCenter = center
     }
 
-    fun onCanvasSizeChanged(width: Float, height: Float) {
-        if (symmetryCenter == null && width > 0f && height > 0f) {
-            symmetryCenter = Point(width / 2f, height / 2f)
+    fun onContainerSizeChanged(width: Float, height: Float) {
+        if (width <= 0f || height <= 0f) return
+        containerWidth = width
+        containerHeight = height
+
+        if (canvasSpec.width <= 0f) {
+            // First layout: default the document to fill the viewport, matching pre-M4 behavior
+            // until the user explicitly resizes it larger via the resize dialog.
+            canvasSpec = canvasSpec.copy(width = width, height = height)
+            viewport = Viewport()
         }
+        if (symmetryCenter == null) {
+            symmetryCenter = Point(canvasSpec.width / 2f, canvasSpec.height / 2f)
+        }
+        viewport = viewport.clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight)
+    }
+
+    fun panBy(dx: Float, dy: Float) {
+        viewport = viewport.pannedBy(dx, dy)
+            .clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight)
+    }
+
+    fun zoomBy(factor: Float, focal: Point) {
+        viewport = viewport.zoomedBy(factor, focal)
+            .clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight)
+    }
+
+    fun fitToScreen() {
+        viewport = Viewport.fit(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight)
+    }
+
+    fun resizeCanvas(newWidth: Float, newHeight: Float, anchor: ResizeAnchor) {
+        if (newWidth <= 0f || newHeight <= 0f) return
+        val offset = ResizeAnchor.offset(canvasSpec.width, canvasSpec.height, newWidth, newHeight, anchor)
+        if (offset.x != 0f || offset.y != 0f) {
+            collection.transformAll { entry -> entry.copy(stroke = entry.stroke.translatedBy(offset.x, offset.y)) }
+            sync()
+        }
+        symmetryCenter = symmetryCenter?.let { Point(it.x + offset.x, it.y + offset.y) }
+        canvasSpec = canvasSpec.copy(width = newWidth, height = newHeight)
+        viewport = viewport.clampedTo(newWidth, newHeight, containerWidth, containerHeight)
+    }
+
+    fun setCanvasBackground(colorArgb: Int) {
+        canvasSpec = canvasSpec.copy(backgroundColorArgb = colorArgb)
     }
 
     fun selectTool(newTool: Tool) {

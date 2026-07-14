@@ -106,4 +106,16 @@ class EntryCollectionTest {
 
         assertThat(collection.canUndo).isFalse()
     }
+
+    @Test
+    fun transformAll_remapsEveryEntryWithoutTouchingHistory() {
+        val collection = EntryCollection<FakeEntry>()
+        collection.add(listOf(FakeEntry("1", "a"), FakeEntry("2", "b")))
+        val canUndoBefore = collection.canUndo
+
+        collection.transformAll { it.copy(tag = it.tag + "!") }
+
+        assertThat(collection.entries.map { it.tag }).containsExactly("a!", "b!").inOrder()
+        assertThat(collection.canUndo).isEqualTo(canUndoBefore)
+    }
 }

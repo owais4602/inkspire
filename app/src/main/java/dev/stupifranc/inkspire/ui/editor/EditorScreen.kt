@@ -10,8 +10,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -19,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -28,13 +32,16 @@ import dev.stupifranc.inkspire.ink.DrawingSurface
 import dev.stupifranc.inkspire.ink.toInkBrush
 import dev.stupifranc.inkspire.model.Tool
 import dev.stupifranc.inkspire.ui.components.BrushPicker
+import dev.stupifranc.inkspire.ui.components.CanvasResizeOverlay
 import dev.stupifranc.inkspire.ui.components.ColorPicker
 import dev.stupifranc.inkspire.ui.components.SizeSlider
 import dev.stupifranc.inkspire.ui.components.SymmetryControls
+import kotlin.math.roundToInt
 
 @Composable
 fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
     var showColorPicker by remember { mutableStateOf(false) }
+    var isResizeMode by remember { mutableStateOf(false) }
     val inkBrush = remember(viewModel.brushSpec) { viewModel.brushSpec.toInkBrush() }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -42,6 +49,7 @@ fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
             TextButton(onClick = viewModel::undo, enabled = viewModel.canUndo) { Text("Undo") }
             TextButton(onClick = viewModel::redo, enabled = viewModel.canRedo) { Text("Redo") }
             TextButton(onClick = viewModel::clear) { Text("Clear") }
+            TextButton(onClick = { isResizeMode = true }) { Text("Resize") }
         }
 
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
@@ -104,20 +112,58 @@ fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
             }
         }
 
-        DrawingSurface(
-            strokes = viewModel.strokes,
-            tool = viewModel.tool,
-            currentBrush = inkBrush,
-            eraserPaddingPx = viewModel.brushSpec.size,
-            symmetryConfig = viewModel.symmetryConfig,
-            onStrokesFinished = viewModel::onStrokesFinished,
-            onErase = viewModel::eraseHits,
-            onCanvasSizeChanged = viewModel::onCanvasSizeChanged,
-            onSymmetryCenterChanged = viewModel::moveSymmetryCenter,
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-        )
+        ) {
+            DrawingSurface(
+                strokes = viewModel.strokes,
+                tool = viewModel.tool,
+                currentBrush = inkBrush,
+                eraserPaddingPx = viewModel.brushSpec.size,
+                symmetryConfig = viewModel.symmetryConfig,
+                canvasSpec = viewModel.canvasSpec,
+                viewport = viewModel.viewport,
+                onStrokesFinished = viewModel::onStrokesFinished,
+                onErase = viewModel::eraseHits,
+                onContainerSizeChanged = viewModel::onContainerSizeChanged,
+                onSymmetryCenterChanged = viewModel::moveSymmetryCenter,
+                onPan = viewModel::panBy,
+                onZoom = viewModel::zoomBy,
+                onDoubleTapFit = viewModel::fitToScreen,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            if (isResizeMode) {
+                CanvasResizeOverlay(
+                    canvasWidth = viewModel.canvasSpec.width,
+                    canvasHeight = viewModel.canvasSpec.height,
+                    viewport = viewModel.viewport,
+                    onConfirm = { width, height, anchor ->
+                        viewModel.resizeCanvas(width, height, anchor)
+                        isResizeMode = false
+                    },
+                    onCancel = { isResizeMode = false },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(12.dp)
+                        .clickable(onClick = viewModel::fitToScreen),
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 2.dp,
+                ) {
+                    Text(
+                        "${(viewModel.viewport.scale * 100).roundToInt()}%",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
+        }
     }
 
     if (showColorPicker) {

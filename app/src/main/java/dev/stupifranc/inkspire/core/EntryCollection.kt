@@ -36,6 +36,14 @@ class EntryCollection<T : Identifiable> {
         history.push(ClearCommand(previous))
     }
 
+    /**
+     * Remaps every entry in place (e.g. translating stroke coordinates on canvas resize).
+     * Deliberately bypasses undo history: it's a structural document change, not an editable action.
+     */
+    fun transformAll(transform: (T) -> T) {
+        entries = entries.map(transform)
+    }
+
     fun undo() = history.undo()
     fun redo() = history.redo()
 
