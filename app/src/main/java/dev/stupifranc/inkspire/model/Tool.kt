@@ -1,3 +1,3 @@
 package dev.stupifranc.inkspire.model
 
-enum class Tool { PEN, ERASER, PAN }
+enum class Tool { NONE, PEN, ERASER, PAN }

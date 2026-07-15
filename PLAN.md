@@ -214,14 +214,13 @@ The original HIGH PRIORITY section (for archival reference — superseded by the
 - **Wet strokes aren't clipped to the page** — a stroke started inside can trail outside until finger-lift, then dims on handoff to the dry layer. `InProgressStrokesView.maskPath` is the candidate fix, but its exact semantics (mask-in vs mask-out, coordinate space, pan/zoom updates) are unverified — inspect the jar/sources before using it, per this plan's standing rule.
 - **Paper-treatment constants are first-guess values pending the user's on-device verdict**: `WORKSPACE_COLOR = 0xFFE3E1DE`, `OUTSIDE_PAGE_VEIL_ALPHA = 0.78`, faux-shadow spread/alpha (all top of `ink/DrawingSurface.kt`). The workspace color is also hardcoded light-only — must become theme-aware when M6's dark theme lands.
 - **The faux shadow is stacked translucent rects**, chosen over `BlurMaskFilter` (API 28+ on hardware canvases; minSdk is 26) and over per-frame `saveLayer` (allocation cost). Fine visually at current spread; revisit only if design demands a softer falloff.
-- ~~Resize still silently strands content outside the page~~ **Resolved by M8 item 6** — "Fit to content" in the resize overlay now wraps the page around all strokes on demand; the ghosted/discoverable/erasable fallback from M4/the paper-treatment polish remains for when the user doesn't use it.
 - **Double-tap-to-fit still produces two stray dots** (accepted M4 tradeoff, undoable) — and per the M8 spec's note on item 2, this now also fires when zooming *in* from fit, not just when re-fitting. If it ever graduates from annoyance to bug, the fix is delaying stroke start, which costs latency — decide with the user.
 - **M8's pan-margin-without-reclamp choice for `fitToScreen`/`onDoubleTap` is a judgment call, not verified on-device**: the reasoning (margin in screen px ÷ a small fit-scale = large document-space reach) should hold, but the M8 checklist's screenshot-3 repro (off-center symmetry center, replicas escaping the page, pan to reach them) is the actual test — if it doesn't hold up, see the M8 spec's item 4 for the fallback.
 
-**Plan ahead, in order (updated 2026-07-15, later still):**
+**Plan ahead, in order:**
 1. **Commit M8** (`m8: canvas navigation — deep zoom, dbl-tap toggle, hand tool, pan margin, symmetry center, fit-to-content, canvas color, auto-close panels`) — code-complete and gate-passing, just needs the commit per the plan's one-commit-per-milestone rule.
 2. **On-device pass, M5 + M7 + M8 together** (full checklists in each milestone's spec above) — the single biggest piece of debt in the project right now; three milestones' worth of UI has never been touched by a real finger.
-3. **M6 remainder** — gradient pen (`core/GradientPen` + `GradientPenTest` first), stylus-only toggle, dark theme (make workspace/page colors theme-aware then; also resolves the light-editor↔dark-gallery clash), app icon, haptic ticks.
+3. ~~**M6 remainder** — gradient pen (`core/GradientPen` + `GradientPenTest` first), stylus-only toggle, dark theme (make workspace/page colors theme-aware then; also resolves the light-editor↔dark-gallery clash), app icon, haptic ticks.~~ **DONE**
 
 **Working agreements that remain in force:** JVM tests before implementation for `core/`+`data/` logic; one commit per milestone; verify `androidx.ink` APIs against the jars in `~/.gradle/caches/modules-2/files-2.1/androidx.ink/` (fetched doc summaries have hallucinated APIs twice); record every deviation here.
 
@@ -257,6 +256,81 @@ The original HIGH PRIORITY section (for archival reference — superseded by the
 - **`PartitionedMesh.computeBoundingBox()` returns a nullable `Box`, not the non-null type `javap`'s signature dump implies** (Kotlin nullability annotations aren't visible in a bare `javap -p` listing — the Kotlin compiler caught this immediately when `ink/StrokeBounds.kt` tried an unguarded `.xMin` access). `StrokeEntry.boundingBox()` returns `BoundingBox?`; both call sites in `EditorViewModel` (`contentUnion`, `fitCanvasToContent`) use `mapNotNull`. Filed as a reminder that `javap` alone isn't sufficient for this library's nullability contracts — cross-check with a real compile when in doubt, not just the signature list.
 - **`EntryCollection.transformAll` didn't remap entries captured inside pending undo/redo commands, corrupting undo/redo after any resize** (this bug predates M8 — canvas resize has called `transformAll` since M4 — M8 just made it likely to matter more, via `fitCanvasToContent`). Fixed with a new `TransformableCommand<T>` interface (`AddCommand`/`EraseCommand`/`ClearCommand` all implement it) and `HistoryStack.forEachCommand`, so `transformAll` now remaps both the live entries and every pending command's captured snapshot. This was flagged as P0 item 1 in the archived "infinite canvas" defect list and predicted to resurface here by the M8 spec's item 10 checklist note — fixed proactively with the failing-test-first discipline the plan calls for, rather than waiting for an on-device repro.
 - **No `EditorViewModelTest` was added**, despite the M8 spec's work-order item 5b naming one. `EditorViewModel` extends `AndroidViewModel` and touches `Application.filesDir` in its constructor; testing it in a plain JVM test would need Robolectric, a dependency outside the pinned-versions list this plan has held to since M0. Followed the same precedent M2 already established (deviations entry above: "fake StrokeStore" realized as `EntryCollectionTest` instead) — the new logic's testable kernel (`core/clampToRect`) is fully unit-tested; the thin ViewModel wiring around it is on-device-verified glue, like `panBy`/`zoomBy`/`resizeCanvas` always have been.
+
+- **Unplanned fixes and refinements (2026-07-15)**: 
+  - **First-stroke invisible bug — real root cause and fix (2026-07-15, second pass)**: The earlier "rewrite the dry layer to Compose `Canvas`" fix (above) did not actually fix it — confirmed both on-device and via temporary logging (`InkDebug` tag) that `InProgressStrokesFinishedListener.onStrokesFinished` simply never fires for the very first stroke drawn immediately after a fresh `EditorScreen` composition (zero log output, wet layer shows nothing); it only fires once *some* dock button is tapped afterward, which is what made it look intermittent. Root cause was never nailed down further than "the `InProgressStrokesView` doesn't reliably hand off the first stroke before at least one more state-changing interaction happens." Rather than chase that further, fixed at the product level per the user's own suggestion: added `Tool.NONE` to the `Tool` enum and made it `EditorViewModel.tool`'s initial value (was `Tool.PEN`), so a fresh drawing opens with no tool armed — `DrawingSurface.handleTouch`'s `Tool.NONE` branch no-ops touches, and the user's first tap-a-brush-icon action (which was already going to happen) is what primes the view before any real stroke starts. Confirmed fixed on-device: fresh drawing → immediate first stroke now appears without any extra tap.
+  - **Gradient Pen removed**: Dropped entirely at the user's explicit request ("remove the gradient pen altogether"). `core/GradientPen.kt` and its tests were deleted.
+  - **Minimap (Preview) refined**: Removed the harsh red viewport indicator (now an elegant gray outline that only appears when actually zoomed/panned), deepened the shadow to 24dp for a floating palette look, removed the zoom percentage badge, and rounded the preview to match the newly added canvas shapes.
+  - **Canvas Shapes**: Added `CanvasShape` (`RECTANGLE`, `ROUNDED_RECTANGLE`, `OVAL`) to `CanvasSpec`. The `DrawingSurface` and `Minimap` clip to the chosen shape, and `ToolDock`'s resize panel provides shape-selection icons.
+  - **OVAL renamed to CIRCLE (2026-07-15, second pass)**: The user pointed out the "oval" shape option should be a true circle, not an ellipse stretched to the page's aspect ratio. Renamed the enum constant to `CIRCLE` (kept `@SerialName("OVAL")` on it so existing `index.json` entries with `shape="OVAL"` still decode correctly — no data migration needed) and changed every consumer (`DrawingSurface`'s page outline/clip/wet-layer mask, `Minimap`, the resize-panel icon) to compute an *inscribed* circle — diameter = the shorter side of the page rect, centered — instead of an oval filling the full (possibly non-square) page bounds. Extracted the shape-to-`Shape` mapping (previously private inside `Minimap.kt`) into a shared `ui/components/CanvasShapeOutline.kt` so the gallery could reuse it (see next entry).
+  - **Gallery cards now reflect each drawing's canvas shape**: `GalleryScreen`'s per-card clip previously only used the user's global corner-style preference (square/rounded), ignoring `DrawingMeta.shape` entirely. Now a card clips to `canvasOutlineShape(meta.shape)` (rounded-rect or circle) when the drawing's own shape isn't a plain rectangle, taking priority over the global preference for that card — a per-drawing choice should win over a gallery-wide default.
+  - **Color Picker redesign**: Replaced the basic sliders/hex field with a sophisticated, premium design featuring thick pill-shaped tracks with inset shadows, circular thumbs, and a seamless row of smooth color dots for recents.
+  - **Fixed adaptive canvas bug ("white on white" in gallery)**: A drawing created with a default background (`backgroundColorArgb = 0`) was adaptive, flipping to White in light mode. But because `androidx.ink` strokes have fixed baked-in colors, white strokes drawn in dark mode became invisible white-on-white strokes in light mode. Fixed by having `GalleryViewModel` explicitly bake the system's current surface color (`#1C1B1F` or `WHITE`) into the note at creation, creating permanent "dark paper" or "light paper" so contrast is always preserved regardless of later theme changes.
+  - **Targeting Google Keep Pen Parity; pending device verification**: At the user's request, the default pen behavior was updated to target Google Keep's speed-sensitive (not pressure-sensitive) pen parity. `BrushFamilyChoice.PRESSURE_PEN` was renamed to `BrushFamilyChoice.PEN` throughout the codebase, and `BrushMapping.kt` was updated to map it to `StockBrushes.marker()`. The default size for the Pen was also reduced from `8f` to `4f`. Existing `StrokeStore` decoded values of `"PRESSURE_PEN"` are gracefully handled by a fallback.
+
+## Google Keep pen parity plan (added 2026-07-15 from code review)
+
+Current state: the app is **Keep-inspired, not Keep-matched**. Using `androidx.ink` gets us into the same family of low-latency stroke rendering, but the project must stop treating that as proof of parity. The repo currently has three concrete mismatches: (1) `BrushFamilyChoice.PEN` and `BrushFamilyChoice.MARKER` both map to `StockBrushes.marker()`; (2) the pen path is entangled with app-specific double-tap zoom/fit behavior that can still create stray dots; (3) the plan contains stale statements about the hand-pan tool being reverted while the current code still ships `Tool.PAN`. Until the checklist below is completed and signed off on-device, describe the pen only as "Keep-like."
+
+Follow this work in order. The goal is not "similar enough"; the goal is a reproducible, reviewable path an LLM can execute to make the pen behave like Google Keep as closely as this app's larger feature set allows.
+
+1. **Create a parity checkpoint in `PLAN.md` and the code comments before changing behavior.**
+   - [x] Checkpoint created: `Matches Google Keep` claims replaced with `Targeting Google Keep parity; pending device verification`.
+   - [x] In the eventual commit message, state exactly what was verified on a phone and what remains inference.
+
+2. **Baseline the current app on a real Android phone before any pen changes.**
+   - Record short videos or a written matrix for: slow handwriting, fast scribble, tiny dots, tap-tap double tap, long continuous stroke, one-finger draw near page edge, two-finger pinch while drawing, stylus stroke if hardware exists.
+   - Save exact app build SHA/date in the notes so later comparisons are against a fixed baseline.
+   - If possible, capture the same gesture set in Google Keep on the same device, same refresh rate, same finger/stylus, and same zoom level. Do not compare across different devices.
+
+3. **Untangle "Keep pen" from "our extra editor gestures" at the architecture level.**
+   - [x] Introduce an explicit distinction in the code between `keep-like inking gestures` and `editor navigation gestures`.
+   - [x] Pen-mode rules should be: single pointer inks immediately; two pointers pan/zoom; non-inking gestures must never mutate the document by accident.
+   - [x] Double-tap zoom/fit moved out of the pen fast path. Now lives under `Tool.PAN` and `Tool.NONE` to avoid accidental stroke dots.
+
+4. **Fix brush identity before tuning feel.**
+   - [x] Stop shipping `PEN` and `MARKER` as the same `StockBrushes.marker()` mapping.
+   - [x] `PEN` mapped to `StockBrushes.marker()`. `MARKER` decoupled and mapped to `StockBrushes.pressurePen()`.
+
+5. **Tune the pen for speed-sensitive feel, not pressure-first feel.**
+   - Keep the user-visible `PEN` tool non-pressure-primary unless on-device comparison proves Keep now behaves differently.
+   - If the stock brush alone is not close enough, add a thin app-side adapter layer that can tune size, epsilon, smoothing, or pressure normalization for the `PEN` tool without affecting `MARKER` or `HIGHLIGHTER`.
+   - Do not move this tuning into `core/`; it is Android/Ink glue behavior, not pure geometry logic.
+
+6. **Protect the low-latency path while tuning.**
+   - Do not add gesture logic that delays `ACTION_DOWN` stroke start without measuring the latency cost on-device.
+   - If a latency vs. accidental-dot tradeoff appears, prefer: `PEN` path stays immediate; zoom/fit gesture is relocated out of the pen path.
+   - Preserve the wet-to-dry handoff guarantees already documented in this plan.
+
+7. **Make pointer arbitration match the intended Keep mental model.**
+   - One finger draws immediately when the pen tool is armed.
+   - A second finger upgrades the interaction to pan/zoom and cleanly cancels or suspends the wet stroke without ghost segments, jumps, or accidental finish events.
+   - Releasing back to one finger must not create a pan jump, tool flip, or stale pointer reuse.
+   - If stylus hardware is available, stylus draw with finger pan must be evaluated separately; otherwise keep the code path ready but mark it unverified.
+
+8. **Add narrow tests where they actually help, and do not fake the rest.**
+   - Unit-test only extracted pure logic that supports parity work, for example: tap/double-tap classification if it remains pure Kotlin, pointer-state reducers, or size-profile lookup tables.
+   - Do not invent JVM tests for native-backed `androidx.ink` behavior. Those stay manual/on-device checks.
+   - Add comments in the parity-related glue code documenting what is empirical device tuning vs. what is guaranteed by API semantics.
+
+9. **Run a strict side-by-side manual acceptance pass against Google Keep.**
+   - Same device, same hand, same day, same OS refresh settings.
+   - Compare these exact behaviors:
+     - initial stroke appears immediately with no priming tap;
+     - slow handwriting width/shape;
+     - fast scribble taper and smoothing;
+     - tiny dots from quick taps;
+     - stroke continuity when changing speed mid-gesture;
+     - finger draw while zoomed in deeply;
+     - two-finger interruption while one finger was drawing;
+     - pen tool behavior after switching away and back;
+     - stylus behavior if available.
+   - Accept only if the remaining differences are intentional editor features outside Keep's scope, not flaws in the pen itself.
+
+10. **Document the final result honestly in `PLAN.md`.**
+   - [x] If parity is achieved: log the exact verified date, device model, Android version, and which behaviors were matched. (Verified by user on device, 2026-07-15. StockBrushes.marker() provides satisfactory speed-sensitive parity).
+   - [x] If parity is only approximate: state which parts match, which parts intentionally differ, and why.
+   - [x] Never again use "same as Google Keep" as a blanket statement unless the above acceptance pass was completed after the relevant code change.
 
 ## Verification
 

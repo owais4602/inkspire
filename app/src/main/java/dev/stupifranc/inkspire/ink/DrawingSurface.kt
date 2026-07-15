@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,10 +27,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Path as ComposePath
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke as StrokeStyle
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
@@ -48,8 +52,10 @@ import dev.stupifranc.inkspire.core.SymmetryEngine
 import dev.stupifranc.inkspire.core.Viewport
 import dev.stupifranc.inkspire.model.CanvasSpec
 import dev.stupifranc.inkspire.model.StrokeEntry
+import dev.stupifranc.inkspire.model.CanvasShape
 import dev.stupifranc.inkspire.model.contains
 import dev.stupifranc.inkspire.model.Tool
+import dev.stupifranc.inkspire.model.BrushFamilyChoice
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.roundToInt
@@ -58,6 +64,7 @@ import kotlin.math.sin
 private class SingleStrokeTouchState {
     var activeStrokeId: InProgressStrokeId? = null
     var activePointerId: Int = -1
+    var activeGroupId: String = ""
 }
 
 /** Tracks a two-finger pinch/pan gesture by the two pointer IDs first seen when it started. */
@@ -106,12 +113,13 @@ fun DrawingSurface(
     strokes: List<StrokeEntry>,
     tool: Tool,
     currentBrush: Brush,
+    currentBrushFamily: BrushFamilyChoice,
     eraserPaddingPx: Float,
     symmetryConfig: SymmetryConfig,
     canvasSpec: CanvasSpec,
     viewport: Viewport,
     awaitingCenterPlacement: Boolean,
-    onStrokesFinished: (List<Stroke>) -> Unit,
+    onStrokesFinished: (String, List<Stroke>) -> Unit,
     onErase: (Set<String>) -> Unit,
     onContainerSizeChanged: (Float, Float) -> Unit,
     onSymmetryCenterChanged: (Point) -> Unit,
@@ -137,6 +145,7 @@ fun DrawingSurface(
     val onZoomState = rememberUpdatedState(onZoom)
     val onDoubleTapZoomState = rememberUpdatedState(onDoubleTapZoom)
     val onCanvasTouchStartState = rememberUpdatedState(onCanvasTouchStart)
+    val brushFamilyState = rememberUpdatedState(currentBrushFamily)
     val touchState = remember { SingleStrokeTouchState() }
     val panZoomState = remember { PanZoomState() }
     val handPanState = remember { SingleFingerPanState() }
@@ -156,41 +165,49 @@ fun DrawingSurface(
             onContainerSizeChanged(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
         },
     ) {
+        val workspaceColor = MaterialTheme.colorScheme.surfaceVariant
+        val defaultPageColor = MaterialTheme.colorScheme.surface
+        
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val pageTopLeft = viewport.documentToScreen(Point(0f, 0f))
-            val pageBottomRight = viewport.documentToScreen(Point(canvasSpec.width, canvasSpec.height))
+            val currentViewport = viewportState.value
+            val currentCanvasSpec = canvasSpecState.value
+            val currentStrokes = strokesState.value
+
+            val pageTopLeft = currentViewport.documentToScreen(Point(0f, 0f))
+            val pageBottomRight = currentViewport.documentToScreen(Point(currentCanvasSpec.width, currentCanvasSpec.height))
             val page = Rect(pageTopLeft.x, pageTopLeft.y, pageBottomRight.x, pageBottomRight.y)
             val pageVisibleAsObject =
                 page.left > 0f || page.top > 0f || page.right < size.width || page.bottom < size.height
 
             // 1. Workspace background
-            drawRect(WORKSPACE_COLOR)
+            drawRect(workspaceColor)
 
             // 2. Page shadow (drawn behind the page)
             if (pageVisibleAsObject) {
-                drawPageShadow(page)
+                drawPageShadow(page, currentCanvasSpec.shape)
             }
 
             // 3. Page background
-            drawRect(color = Color(canvasSpec.backgroundColorArgb), topLeft = page.topLeft, size = page.size)
+            val pageColor = if (currentCanvasSpec.backgroundColorArgb == 0) defaultPageColor else Color(currentCanvasSpec.backgroundColorArgb)
+            drawPageOutline(page, pageColor, currentCanvasSpec.shape)
 
             // 4. Clip all ink and patterns to the page
-            clipRect(page.left, page.top, page.right, page.bottom) {
+            withShapeClip(page, currentCanvasSpec.shape) {
                 drawIntoCanvas { canvas ->
                     PaperStyleRenderer.draw(
-                        canvas.nativeCanvas, canvasSpec,
+                        canvas.nativeCanvas, currentCanvasSpec,
                         page.left, page.top, page.width, page.height,
-                        viewport.scale,
+                        currentViewport.scale,
                     )
                 }
 
-                val worldToScreen = viewport.toWorldToScreenMatrix()
+                val worldToScreen = currentViewport.toWorldToScreenMatrix()
                 drawIntoCanvas { canvas ->
                     val nativeCanvas = canvas.nativeCanvas
                     nativeCanvas.save()
                     nativeCanvas.concat(worldToScreen)
                     val identity = android.graphics.Matrix()
-                    strokes.forEach { entry ->
+                    currentStrokes.forEach { entry ->
                         renderer.draw(nativeCanvas, entry.stroke, identity)
                     }
                     nativeCanvas.restore()
@@ -199,17 +216,12 @@ fun DrawingSurface(
 
             // 5. Page border
             if (pageVisibleAsObject) {
-                drawRect(
-                    color = PAGE_EDGE_COLOR,
-                    topLeft = page.topLeft,
-                    size = page.size,
-                    style = StrokeStyle(width = 1.dp.toPx()),
-                )
+                drawPageOutline(page, PAGE_EDGE_COLOR, currentCanvasSpec.shape, style = StrokeStyle(width = 1.dp.toPx()))
             }
 
             if (isSymmetryActive) {
-                clipRect(page.left, page.top, page.right, page.bottom) {
-                    drawSymmetryGuides(symmetryConfig, viewport)
+                withShapeClip(page, currentCanvasSpec.shape) {
+                    drawSymmetryGuides(symmetryConfig, currentViewport)
                 }
             }
         }
@@ -223,7 +235,7 @@ fun DrawingSurface(
                             val copies = finishedStrokes.values.flatMap { stroke ->
                                 stroke.replicateThrough(transformsState.value)
                             }
-                            onFinishedState.value(copies)
+                            onFinishedState.value(touchState.activeGroupId, copies)
                             removeFinishedStrokes(finishedStrokes.keys)
                         }
                     })
@@ -236,6 +248,7 @@ fun DrawingSurface(
                             event = event,
                             tool = toolState.value,
                             brush = brushState.value,
+                            brushFamily = brushFamilyState.value,
                             screenToWorld = viewportState.value.toScreenToWorldMatrix(),
                             strokeTouchState = touchState,
                             panZoomState = panZoomState,
@@ -265,10 +278,15 @@ fun DrawingSurface(
                 view.maskPath = if (view.width > 0 && view.height > 0) {
                     val topLeft = viewport.documentToScreen(Point(0f, 0f))
                     val bottomRight = viewport.documentToScreen(Point(canvasSpec.width, canvasSpec.height))
-                    Path().apply {
-                        fillType = Path.FillType.EVEN_ODD
-                        addRect(0f, 0f, view.width.toFloat(), view.height.toFloat(), Path.Direction.CW)
-                        addRect(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y, Path.Direction.CW)
+                    val pageRect = Rect(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y)
+                    android.graphics.Path().apply {
+                        fillType = android.graphics.Path.FillType.EVEN_ODD
+                        addRect(0f, 0f, view.width.toFloat(), view.height.toFloat(), android.graphics.Path.Direction.CW)
+                        when (canvasSpec.shape) {
+                            CanvasShape.RECTANGLE -> addRect(pageRect.left, pageRect.top, pageRect.right, pageRect.bottom, android.graphics.Path.Direction.CW)
+                            CanvasShape.ROUNDED_RECTANGLE -> addRoundRect(pageRect.left, pageRect.top, pageRect.right, pageRect.bottom, 16.dp.value * view.context.resources.displayMetrics.density, 16.dp.value * view.context.resources.displayMetrics.density, android.graphics.Path.Direction.CW)
+                            CanvasShape.CIRCLE -> circleBounds(pageRect).let { addOval(it.left, it.top, it.right, it.bottom, android.graphics.Path.Direction.CW) }
+                        }
                     }
                 } else {
                     null
@@ -314,7 +332,6 @@ fun DrawingSurface(
 }
 
 // Neutral studio-gray workspace behind the page (Procreate/Figma-style). Revisit for dark theme in M6.
-private val WORKSPACE_COLOR = Color(0xFFE3E1DE)
 private val PAGE_EDGE_COLOR = Color.Black.copy(alpha = 0.08f)
 private const val OUTSIDE_PAGE_VEIL_ALPHA = 0.78f
 private const val SHADOW_STEPS = 4
@@ -324,16 +341,50 @@ private const val SHADOW_STEP_ALPHA = 0.05f
  * Faux drop shadow: stacked expanding translucent rects (cheap, works on every API level,
  * no per-frame offscreen layer). Caller must already have clipped out the page itself.
  */
-private fun DrawScope.drawPageShadow(page: Rect) {
+private fun DrawScope.drawPageShadow(page: Rect, shape: CanvasShape) {
     val spread = 10.dp.toPx()
     val dropY = 3.dp.toPx()
     for (i in 1..SHADOW_STEPS) {
         val outset = spread * i / SHADOW_STEPS
-        drawRect(
-            color = Color.Black.copy(alpha = SHADOW_STEP_ALPHA),
-            topLeft = Offset(page.left - outset, page.top - outset + dropY),
-            size = Size(page.width + 2 * outset, page.height + 2 * outset),
-        )
+        val outsetRect = Rect(page.left - outset, page.top - outset + dropY, page.right + outset, page.bottom + outset + dropY)
+        drawPageOutline(outsetRect, Color.Black.copy(alpha = SHADOW_STEP_ALPHA), shape)
+    }
+}
+
+/** The circle inscribed in [page] (diameter = the shorter side), centered — so it stays a true circle regardless of the page's own aspect ratio. */
+private fun circleBounds(page: Rect): Rect {
+    val diameter = minOf(page.width, page.height)
+    val cx = (page.left + page.right) / 2f
+    val cy = (page.top + page.bottom) / 2f
+    val r = diameter / 2f
+    return Rect(cx - r, cy - r, cx + r, cy + r)
+}
+
+private fun DrawScope.drawPageOutline(
+    page: Rect,
+    color: Color,
+    shape: CanvasShape,
+    style: androidx.compose.ui.graphics.drawscope.DrawStyle = androidx.compose.ui.graphics.drawscope.Fill
+) {
+    when (shape) {
+        CanvasShape.RECTANGLE -> drawRect(color, topLeft = page.topLeft, size = page.size, style = style)
+        CanvasShape.ROUNDED_RECTANGLE -> drawRoundRect(color, topLeft = page.topLeft, size = page.size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx()), style = style)
+        CanvasShape.CIRCLE -> circleBounds(page).let { drawOval(color, topLeft = it.topLeft, size = it.size, style = style) }
+    }
+}
+
+private fun DrawScope.withShapeClip(page: Rect, shape: CanvasShape, block: DrawScope.() -> Unit) {
+    if (shape == CanvasShape.RECTANGLE) {
+        clipRect(page.left, page.top, page.right, page.bottom, block = block)
+    } else {
+        val path = ComposePath().apply {
+            when (shape) {
+                CanvasShape.ROUNDED_RECTANGLE -> addRoundRect(androidx.compose.ui.geometry.RoundRect(page, 16.dp.toPx(), 16.dp.toPx()))
+                CanvasShape.CIRCLE -> addOval(circleBounds(page))
+                else -> addRect(page)
+            }
+        }
+        clipPath(path, block = block)
     }
 }
 
@@ -371,6 +422,7 @@ private fun handleTouch(
     event: MotionEvent,
     tool: Tool,
     brush: Brush,
+    brushFamily: BrushFamilyChoice,
     screenToWorld: Matrix,
     strokeTouchState: SingleStrokeTouchState,
     panZoomState: PanZoomState,
@@ -402,19 +454,30 @@ private fun handleTouch(
     if (awaitingCenterPlacement) {
         return handleCenterPlacementTouch(event, viewport, canvasSpec, onPlaceCenter)
     }
-    return when (tool) {
+    
+    val effectiveTool = tool
+    return when (effectiveTool) {
+        Tool.NONE -> {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                tapTracker.downTimeMs = event.eventTime
+                tapTracker.downX = event.x
+                tapTracker.downY = event.y
+            } else if (event.actionMasked == MotionEvent.ACTION_UP) {
+                registerTapAndMaybeFit(event, tapTracker, onDoubleTapZoom)
+            }
+            true
+        }
         Tool.ERASER -> handleEraserTouch(event, entries, eraserTester, eraserPaddingPx, viewport, onErase)
-        Tool.PAN -> handleHandPanTouch(event, handPanState, onPan)
+        Tool.PAN -> handleHandPanTouch(event, handPanState, onPan, tapTracker, onDoubleTapZoom)
         Tool.PEN -> handlePenTouch(
             view,
             event,
             brush,
+            brushFamily,
             touchState = strokeTouchState,
             screenToWorld = screenToWorld,
             viewport = viewport,
             canvasSpec = canvasSpec,
-            tapTracker = tapTracker,
-            onDoubleTapZoom = onDoubleTapZoom,
             onStrokeActiveChanged = onStrokeActiveChanged,
         )
     }
@@ -503,6 +566,8 @@ private fun handleHandPanTouch(
     event: MotionEvent,
     state: SingleFingerPanState,
     onPan: (Float, Float) -> Unit,
+    tapTracker: TapTracker,
+    onDoubleTapZoom: (Point) -> Unit,
 ): Boolean {
     val pointerId = event.getPointerId(0)
     when (event.actionMasked) {
@@ -511,6 +576,9 @@ private fun handleHandPanTouch(
             state.pointerId = pointerId
             state.lastX = event.getX(0)
             state.lastY = event.getY(0)
+            tapTracker.downTimeMs = event.eventTime
+            tapTracker.downX = event.x
+            tapTracker.downY = event.y
             return true
         }
         MotionEvent.ACTION_MOVE -> {
@@ -531,6 +599,9 @@ private fun handleHandPanTouch(
         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
             state.active = false
             state.pointerId = -1
+            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                registerTapAndMaybeFit(event, tapTracker, onDoubleTapZoom)
+            }
             return true
         }
         else -> return true
@@ -541,22 +612,20 @@ private fun handlePenTouch(
     view: InProgressStrokesView,
     event: MotionEvent,
     brush: Brush,
+    brushFamily: BrushFamilyChoice,
     touchState: SingleStrokeTouchState,
     screenToWorld: Matrix,
     viewport: Viewport,
     canvasSpec: CanvasSpec,
-    tapTracker: TapTracker,
-    onDoubleTapZoom: (Point) -> Unit,
     onStrokeActiveChanged: (Boolean) -> Unit,
 ): Boolean {
     when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> {
             if (touchState.activeStrokeId != null) return false
-            tapTracker.downTimeMs = event.eventTime
-            tapTracker.downX = event.x
-            tapTracker.downY = event.y
             val pointerId = event.getPointerId(event.actionIndex)
             touchState.activePointerId = pointerId
+            touchState.activeGroupId = java.util.UUID.randomUUID().toString()
+
             // Only start real ink outside the page boundary is a no-op, but the touch is still
             // consumed so the eventual ACTION_UP reaches us for double-tap-to-fit detection.
             if (canvasSpec.contains(viewport.screenToDocument(Point(event.x, event.y)))) {
@@ -568,6 +637,7 @@ private fun handlePenTouch(
         MotionEvent.ACTION_MOVE -> {
             val strokeId = touchState.activeStrokeId ?: return false
             if (event.findPointerIndex(touchState.activePointerId) == -1) return false
+
             view.addToStroke(event, touchState.activePointerId, strokeId)
             return true
         }
@@ -578,7 +648,6 @@ private fun handlePenTouch(
             touchState.activeStrokeId = null
             touchState.activePointerId = -1
             onStrokeActiveChanged(false)
-            registerTapAndMaybeFit(event, tapTracker, onDoubleTapZoom)
             return true
         }
         MotionEvent.ACTION_CANCEL -> {

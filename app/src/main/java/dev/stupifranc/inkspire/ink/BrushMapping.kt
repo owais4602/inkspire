@@ -9,8 +9,8 @@ import dev.stupifranc.inkspire.model.BrushSpec
 private const val DEFAULT_EPSILON = 0.1f
 
 fun BrushFamilyChoice.toBrushFamily(): BrushFamily = when (this) {
-    BrushFamilyChoice.PRESSURE_PEN -> StockBrushes.pressurePen()
-    BrushFamilyChoice.MARKER -> StockBrushes.marker()
+    BrushFamilyChoice.PEN -> StockBrushes.marker()
+    BrushFamilyChoice.MARKER -> StockBrushes.pressurePen()
     BrushFamilyChoice.HIGHLIGHTER -> StockBrushes.highlighter()
 }
 
@@ -21,10 +21,10 @@ fun BrushFamilyChoice.toBrushFamily(): BrushFamily = when (this) {
  * generic `BrushFamily` byte serialization, which exists for custom brush textures we don't use.
  */
 fun BrushFamily.toBrushFamilyChoice(): BrushFamilyChoice = when (this) {
-    StockBrushes.pressurePen() -> BrushFamilyChoice.PRESSURE_PEN
-    StockBrushes.marker() -> BrushFamilyChoice.MARKER
+    StockBrushes.marker() -> BrushFamilyChoice.PEN
+    StockBrushes.pressurePen() -> BrushFamilyChoice.MARKER
     StockBrushes.highlighter() -> BrushFamilyChoice.HIGHLIGHTER
-    else -> BrushFamilyChoice.PRESSURE_PEN
+    else -> BrushFamilyChoice.PEN
 }
 
 fun BrushSpec.toInkBrush(): Brush =

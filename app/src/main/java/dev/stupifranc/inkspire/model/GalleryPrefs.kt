@@ -30,6 +30,5 @@ data class GalleryPrefs(
     val thumbSize: ThumbSize = ThumbSize.MEDIUM,
     val borderEnabled: Boolean = true,
     val cornerStyle: CornerStyle = CornerStyle.ROUNDED,
-    val showCaptions: Boolean = true,
     val wall: WallTone = WallTone.DARK,
 )

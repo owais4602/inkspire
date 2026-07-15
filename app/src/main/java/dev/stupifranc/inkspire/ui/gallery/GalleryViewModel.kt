@@ -41,7 +41,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     /** Width/height start at 0 — the editor fills the document to whatever viewport first appears, same as a fresh install. */
     fun createDrawing(): DrawingMeta {
-        val meta = repository.createDrawing(name = "Untitled", width = 0f, height = 0f, backgroundColorArgb = Color.WHITE)
+        val isDark = (getApplication<Application>().resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val defaultBg = if (isDark) 0xFF1C1B1F.toInt() else 0xFFFFFFFF.toInt()
+        val meta = repository.createDrawing(name = "Untitled", width = 0f, height = 0f, backgroundColorArgb = defaultBg)
         refresh()
         return meta
     }

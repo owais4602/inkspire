@@ -13,7 +13,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import android.view.HapticFeedbackConstants
 
 /** Circular icon button shared by the floating tool dock and the history pill. */
 @Composable
@@ -30,6 +32,12 @@ internal fun DockIconButton(
     }
     val background = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
 
+    val view = LocalView.current
+    val hapticOnClick = {
+        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        onClick()
+    }
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -37,7 +45,7 @@ internal fun DockIconButton(
             .size(40.dp)
             .clip(CircleShape)
             .background(background)
-            .clickable(enabled = enabled, onClick = onClick),
+            .clickable(enabled = enabled, onClick = hapticOnClick),
     ) {
         icon(tint)
     }

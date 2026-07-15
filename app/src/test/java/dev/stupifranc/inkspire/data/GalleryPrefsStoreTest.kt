@@ -28,7 +28,6 @@ class GalleryPrefsStoreTest {
             thumbSize = ThumbSize.LARGE,
             borderEnabled = false,
             cornerStyle = CornerStyle.SQUARE,
-            showCaptions = false,
             wall = WallTone.LIGHT,
         )
         store().save(prefs)

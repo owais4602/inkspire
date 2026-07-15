@@ -29,7 +29,7 @@ class DrawingRepository(private val rootDir: File) {
 
     fun listDrawings(): List<DrawingMeta> = readIndex().sortedByDescending { it.updatedAtEpochMillis }
 
-    fun createDrawing(name: String, width: Float, height: Float, backgroundColorArgb: Int): DrawingMeta {
+    fun createDrawing(name: String, width: Float, height: Float, backgroundColorArgb: Int, shape: dev.stupifranc.inkspire.model.CanvasShape = dev.stupifranc.inkspire.model.CanvasShape.RECTANGLE): DrawingMeta {
         val now = System.currentTimeMillis()
         val meta = DrawingMeta(
             id = UUID.randomUUID().toString(),
@@ -37,6 +37,7 @@ class DrawingRepository(private val rootDir: File) {
             width = width,
             height = height,
             backgroundColorArgb = backgroundColorArgb,
+            shape = shape,
             createdAtEpochMillis = now,
             updatedAtEpochMillis = now,
         )
@@ -56,6 +57,7 @@ class DrawingRepository(private val rootDir: File) {
         backgroundColorArgb: Int,
         paperStyle: PaperStyle = PaperStyle.PLAIN,
         paperSpacing: Float = DEFAULT_PAPER_SPACING,
+        shape: dev.stupifranc.inkspire.model.CanvasShape = dev.stupifranc.inkspire.model.CanvasShape.RECTANGLE,
     ) {
         updateMeta(id) {
             it.copy(
@@ -64,6 +66,7 @@ class DrawingRepository(private val rootDir: File) {
                 backgroundColorArgb = backgroundColorArgb,
                 paperStyle = paperStyle,
                 paperSpacing = paperSpacing,
+                shape = shape,
                 updatedAtEpochMillis = System.currentTimeMillis(),
             )
         }

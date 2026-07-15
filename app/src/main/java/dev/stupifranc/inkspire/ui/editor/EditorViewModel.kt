@@ -48,7 +48,7 @@ private const val PAN_MARGIN_FRACTION = 1f / 3f
 private const val EDGE_GROW_FRACTION = 0.5f
 
 private val DEFAULT_SIZES = mapOf(
-    BrushFamilyChoice.PRESSURE_PEN to 8f,
+    BrushFamilyChoice.PEN to 4f,
     BrushFamilyChoice.MARKER to 14f,
     BrushFamilyChoice.HIGHLIGHTER to 24f,
 )
@@ -67,11 +67,19 @@ class EditorViewModel(application: Application, private val drawingId: String) :
     var canRedo by mutableStateOf(false)
         private set
 
-    var tool by mutableStateOf(Tool.PEN)
+    var tool by mutableStateOf(Tool.NONE)
         private set
 
     var brushSpec by mutableStateOf(
-        BrushSpec(family = BrushFamilyChoice.PRESSURE_PEN, colorArgb = Color.BLACK, size = DEFAULT_SIZES.getValue(BrushFamilyChoice.PRESSURE_PEN))
+        BrushSpec(
+            family = BrushFamilyChoice.PEN,
+            colorArgb = if ((application.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
+                android.graphics.Color.WHITE
+            } else {
+                android.graphics.Color.BLACK
+            },
+            size = DEFAULT_SIZES.getValue(BrushFamilyChoice.PEN)
+        )
     )
         private set
 
@@ -108,8 +116,8 @@ class EditorViewModel(application: Application, private val drawingId: String) :
 
     private fun loadInitialCanvasSpec(): CanvasSpec {
         val meta = repository.listDrawings().find { it.id == drawingId }
-            ?: return CanvasSpec(width = 0f, height = 0f, backgroundColorArgb = Color.WHITE)
-        return CanvasSpec(width = meta.width, height = meta.height, backgroundColorArgb = meta.backgroundColorArgb, paperStyle = meta.paperStyle, paperSpacing = meta.paperSpacing)
+            ?: return CanvasSpec(width = 0f, height = 0f, backgroundColorArgb = 0)
+        return CanvasSpec(width = meta.width, height = meta.height, backgroundColorArgb = meta.backgroundColorArgb, paperStyle = meta.paperStyle, paperSpacing = meta.paperSpacing, shape = meta.shape)
     }
 
     val symmetryConfig: SymmetryConfig
@@ -260,6 +268,11 @@ class EditorViewModel(application: Application, private val drawingId: String) :
         scheduleAutosave()
     }
 
+    fun setCanvasShape(shape: dev.stupifranc.inkspire.model.CanvasShape) {
+        canvasSpec = canvasSpec.copy(shape = shape)
+        scheduleAutosave()
+    }
+
     fun selectTool(newTool: Tool) {
         tool = newTool
         awaitingCenterPlacement = false
@@ -282,9 +295,8 @@ class EditorViewModel(application: Application, private val drawingId: String) :
         brushSpec = brushSpec.copy(size = size)
     }
 
-    fun onStrokesFinished(finished: List<Stroke>) {
+    fun onStrokesFinished(groupId: String, finished: List<Stroke>) {
         if (finished.isEmpty()) return
-        val groupId = UUID.randomUUID().toString()
         val entries = finished.map { StrokeEntry(groupId = groupId, stroke = it) }
         collection.add(entries)
         sync()
@@ -329,7 +341,7 @@ class EditorViewModel(application: Application, private val drawingId: String) :
 
     private fun performSave(entries: List<StrokeEntry>, spec: CanvasSpec) {
         repository.saveStrokes(drawingId, StrokeStore.encode(entries))
-        repository.updateCanvasSpec(drawingId, spec.width, spec.height, spec.backgroundColorArgb, spec.paperStyle, spec.paperSpacing)
+        repository.updateCanvasSpec(drawingId, spec.width, spec.height, spec.backgroundColorArgb, spec.paperStyle, spec.paperSpacing, spec.shape)
         if (spec.width > 0f && spec.height > 0f) {
             val thumbnail = CanvasExporter.renderThumbnail(spec, entries)
             repository.saveThumbnail(drawingId, CanvasExporter.toPngBytes(thumbnail))

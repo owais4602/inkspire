@@ -12,6 +12,7 @@ data class DrawingMeta(
     val backgroundColorArgb: Int,
     val paperStyle: PaperStyle = PaperStyle.PLAIN,
     val paperSpacing: Float = DEFAULT_PAPER_SPACING,
+    val shape: CanvasShape = CanvasShape.RECTANGLE,
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,
     val hasThumbnail: Boolean = false,

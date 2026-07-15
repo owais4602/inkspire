@@ -48,6 +48,7 @@ import dev.stupifranc.inkspire.ui.components.icons.ExportIcon
 import dev.stupifranc.inkspire.ui.components.icons.HandIcon
 import dev.stupifranc.inkspire.ui.components.icons.HighlighterIcon
 import dev.stupifranc.inkspire.ui.components.icons.MarkerIcon
+import dev.stupifranc.inkspire.ui.components.icons.PenIcon
 import dev.stupifranc.inkspire.ui.components.icons.MirrorIcon
 import dev.stupifranc.inkspire.ui.components.icons.MoreIcon
 import dev.stupifranc.inkspire.ui.components.icons.PaperDotsIcon
@@ -87,6 +88,7 @@ fun ToolDock(
     onSymmetryMirrorChange: (Boolean) -> Unit,
     onToggleCenterPlacement: () -> Unit,
     onResetCenter: () -> Unit,
+
     onColorClick: () -> Unit,
     onResize: () -> Unit,
     onGrowEdge: (CanvasEdge) -> Unit,
@@ -96,6 +98,8 @@ fun ToolDock(
     paperSpacing: Float,
     onPaperStyleChange: (PaperStyle) -> Unit,
     onPaperSpacingChange: (Float) -> Unit,
+    canvasShape: dev.stupifranc.inkspire.model.CanvasShape,
+    onCanvasShapeChange: (dev.stupifranc.inkspire.model.CanvasShape) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expansion by remember { mutableStateOf(DockExpansion.NONE) }
@@ -138,6 +142,8 @@ fun ToolDock(
                             onResetCenter = onResetCenter,
                         )
                         DockExpansion.CANVAS -> CanvasSizePanel(
+                            canvasShape = canvasShape,
+                            onShapeChange = onCanvasShapeChange,
                             onGrowEdge = onGrowEdge,
                             onResize = {
                                 expansion = DockExpansion.NONE
@@ -148,8 +154,8 @@ fun ToolDock(
                             canvasColorArgb = canvasColorArgb,
                             paperStyle = paperStyle,
                             paperSpacing = paperSpacing,
-                            onExport = onExport,
-                            onCanvasColorClick = onCanvasColorClick,
+                            onExport = { toggle(DockExpansion.NONE); onExport() },
+                            onCanvasColorClick = { toggle(DockExpansion.NONE); onCanvasColorClick() },
                             onPaperStyleChange = onPaperStyleChange,
                             onPaperSpacingChange = onPaperSpacingChange,
                         )
@@ -168,9 +174,9 @@ fun ToolDock(
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                DockIconButton(selected = tool == Tool.PEN && brushFamily == BrushFamilyChoice.PRESSURE_PEN, onClick = {
-                    if (tool == Tool.PEN && brushFamily == BrushFamilyChoice.PRESSURE_PEN) toggle(DockExpansion.SIZE)
-                    else { onSelectBrush(BrushFamilyChoice.PRESSURE_PEN); expansion = DockExpansion.NONE }
+                DockIconButton(selected = tool == Tool.PEN && brushFamily == BrushFamilyChoice.PEN, onClick = {
+                    if (tool == Tool.PEN && brushFamily == BrushFamilyChoice.PEN) toggle(DockExpansion.SIZE)
+                    else { onSelectBrush(BrushFamilyChoice.PEN); expansion = DockExpansion.NONE }
                 }) { tint -> PenIcon(tint) }
 
                 DockIconButton(selected = tool == Tool.PEN && brushFamily == BrushFamilyChoice.MARKER, onClick = {
@@ -205,7 +211,7 @@ fun ToolDock(
                         .padding(horizontal = 6.dp)
                         .size(28.dp)
                         .clip(CircleShape)
-                        .background(Color(colorArgb))
+                        .background(if (colorArgb == 0) MaterialTheme.colorScheme.surface else Color(colorArgb))
                         .clickable(onClick = onColorClick),
                 )
 
@@ -252,10 +258,24 @@ private fun SymmetryPanel(
 /** Explicit, deliberate canvas growth in a chosen direction ("extend it like a sheet of paper"), plus the precise drag-handle resize. */
 @Composable
 private fun CanvasSizePanel(
+    canvasShape: dev.stupifranc.inkspire.model.CanvasShape,
+    onShapeChange: (dev.stupifranc.inkspire.model.CanvasShape) -> Unit,
     onGrowEdge: (CanvasEdge) -> Unit,
     onResize: () -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(modifier = Modifier.padding(bottom = 8.dp)) {
+            dev.stupifranc.inkspire.model.CanvasShape.entries.forEach { shape ->
+                DockIconButton(selected = shape == canvasShape, onClick = { onShapeChange(shape) }) { tint ->
+                    when (shape) {
+                        dev.stupifranc.inkspire.model.CanvasShape.RECTANGLE -> dev.stupifranc.inkspire.ui.components.icons.RectangleIcon(tint)
+                        dev.stupifranc.inkspire.model.CanvasShape.ROUNDED_RECTANGLE -> dev.stupifranc.inkspire.ui.components.icons.RoundedRectangleIcon(tint)
+                        dev.stupifranc.inkspire.model.CanvasShape.CIRCLE -> dev.stupifranc.inkspire.ui.components.icons.CircleIcon(tint)
+                    }
+                }
+            }
+        }
+        DockDivider(horizontal = true)
         DockIconButton(selected = false, onClick = { onGrowEdge(CanvasEdge.TOP) }) { tint -> ArrowUpIcon(tint) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             DockIconButton(selected = false, onClick = { onGrowEdge(CanvasEdge.LEFT) }) { tint -> ArrowLeftIcon(tint) }
@@ -266,6 +286,19 @@ private fun CanvasSizePanel(
         }
         DockIconButton(selected = false, onClick = { onGrowEdge(CanvasEdge.BOTTOM) }) { tint -> ArrowDownIcon(tint) }
     }
+}
+
+@Composable
+fun DockDivider(horizontal: Boolean = false) {
+    Box(
+        modifier = Modifier
+            .padding(horizontal = if (horizontal) 0.dp else 4.dp, vertical = if (horizontal) 4.dp else 0.dp)
+            .size(
+                width = if (horizontal) 32.dp else 1.dp,
+                height = if (horizontal) 1.dp else 32.dp
+            )
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+    )
 }
 
 @Composable
@@ -287,7 +320,7 @@ private fun MorePanel(
                     .padding(horizontal = 8.dp)
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(Color(canvasColorArgb))
+                    .background(if (canvasColorArgb == 0) androidx.compose.material3.MaterialTheme.colorScheme.surface else Color(canvasColorArgb))
                     .border(1.dp, Color.Black.copy(alpha = 0.15f), CircleShape)
                     .clickable(onClick = onCanvasColorClick),
             )

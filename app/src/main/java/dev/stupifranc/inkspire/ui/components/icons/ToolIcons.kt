@@ -37,6 +37,7 @@ fun PenIcon(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
+
 @Composable
 fun MarkerIcon(tint: Color, modifier: Modifier = Modifier) {
     IconCanvas(modifier) {
@@ -396,5 +397,42 @@ fun ResetIcon(tint: Color, modifier: Modifier = Modifier) {
         // Arrow head
         drawLine(tint, Offset(w * 0.8f, h * 0.5f), Offset(w * 0.6f, h * 0.4f), stroke.width, stroke.cap)
         drawLine(tint, Offset(w * 0.8f, h * 0.5f), Offset(w * 1.0f, h * 0.4f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun RectangleIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx())
+        val w = size.width
+        val h = size.height
+        drawRect(tint, Offset(w * 0.15f, h * 0.25f), Size(w * 0.7f, h * 0.5f), style = stroke)
+    }
+}
+
+@Composable
+fun RoundedRectangleIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx())
+        val w = size.width
+        val h = size.height
+        drawRoundRect(
+            tint,
+            Offset(w * 0.15f, h * 0.25f),
+            Size(w * 0.7f, h * 0.5f),
+            cornerRadius = CornerRadius(w * 0.15f),
+            style = stroke
+        )
+    }
+}
+
+@Composable
+fun CircleIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx())
+        val d = minOf(size.width, size.height) * 0.7f
+        val left = (size.width - d) / 2f
+        val top = (size.height - d) / 2f
+        drawOval(tint, Offset(left, top), Size(d, d), style = stroke)
     }
 }

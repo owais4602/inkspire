@@ -106,6 +106,7 @@ fun EditorScreen(
             strokes = viewModel.strokes,
             tool = viewModel.tool,
             currentBrush = inkBrush,
+            currentBrushFamily = viewModel.brushSpec.family,
             eraserPaddingPx = viewModel.brushSpec.size,
             symmetryConfig = viewModel.symmetryConfig,
             canvasSpec = viewModel.canvasSpec,
@@ -196,6 +197,8 @@ fun EditorScreen(
                 paperSpacing = viewModel.canvasSpec.paperSpacing,
                 onPaperStyleChange = viewModel::setPaperStyle,
                 onPaperSpacingChange = viewModel::setPaperSpacing,
+                canvasShape = viewModel.canvasSpec.shape,
+                onCanvasShapeChange = viewModel::setCanvasShape,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 20.dp),

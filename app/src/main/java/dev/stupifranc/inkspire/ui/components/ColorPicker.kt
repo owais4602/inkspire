@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -53,42 +54,46 @@ fun ColorPicker(
             onChange = { s, v -> onColorChange(hsvaToArgb(hsva.copy(saturation = s, value = v))) },
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1.4f),
+                .aspectRatio(1.25f)
+                .shadow(4.dp, RoundedCornerShape(24.dp))
+                .clip(RoundedCornerShape(24.dp)),
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         HueSlider(
             hue = hsva.hue,
             onChange = { h -> onColorChange(hsvaToArgb(hsva.copy(hue = h))) },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(28.dp),
+                .height(36.dp)
+                .shadow(2.dp, CircleShape)
+                .clip(CircleShape),
         )
 
         if (showAlphaSlider) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             AlphaSlider(
                 alpha = hsva.alpha,
                 onChange = { a -> onColorChange(hsvaToArgb(hsva.copy(alpha = a))) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .shadow(2.dp, CircleShape)
+                    .clip(CircleShape),
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        HexField(colorArgb = colorArgb, onColorChange = onColorChange)
-
         if (recentColors.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("Recent")
-            Row(modifier = Modifier.padding(top = 4.dp)) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Recent", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(modifier = Modifier.padding(top = 12.dp)) {
                 recentColors.forEach { recent ->
                     ColorSwatch(
                         colorArgb = recent,
                         onClick = { onColorChange(recent) },
-                        modifier = Modifier.padding(end = 8.dp),
+                        modifier = Modifier.padding(end = 12.dp),
                     )
                 }
             }
@@ -115,7 +120,6 @@ private fun SaturationValueSquare(
 
     Canvas(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
             .pointerInput(Unit) {
                 detectTapGestures { offset -> updateFrom(offset, size) }
             }
@@ -126,11 +130,26 @@ private fun SaturationValueSquare(
         drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
         drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
 
+        val thumbCenter = Offset(saturation * size.width, (1f - value) * size.height)
+        
+        // Thumb shadow
+        drawCircle(
+            color = Color.Black.copy(alpha = 0.2f),
+            radius = 12.dp.toPx(),
+            center = Offset(thumbCenter.x, thumbCenter.y + 2.dp.toPx())
+        )
+        // Thumb inner
         drawCircle(
             color = Color.White,
-            radius = 8.dp.toPx(),
-            center = Offset(saturation * size.width, (1f - value) * size.height),
-            style = Stroke(width = 2.dp.toPx()),
+            radius = 12.dp.toPx(),
+            center = thumbCenter,
+            style = Stroke(width = 3.dp.toPx()),
+        )
+        // Thumb border
+        drawCircle(
+            color = Color.White,
+            radius = 12.dp.toPx(),
+            center = thumbCenter,
         )
     }
 }
@@ -148,7 +167,6 @@ private fun HueSlider(hue: Float, onChange: (Float) -> Unit, modifier: Modifier 
 
     Canvas(
         modifier = modifier
-            .clip(RoundedCornerShape(50))
             .pointerInput(Unit) {
                 detectTapGestures { offset -> updateFrom(offset.x, size.width) }
             }
@@ -158,11 +176,16 @@ private fun HueSlider(hue: Float, onChange: (Float) -> Unit, modifier: Modifier 
     ) {
         drawRect(Brush.horizontalGradient(hueColors))
         val thumbX = (hue / 360f).coerceIn(0f, 1f) * size.width
+        
+        drawCircle(
+            color = Color.Black.copy(alpha = 0.15f),
+            radius = (size.height / 2f) + 1.dp.toPx(),
+            center = Offset(thumbX, size.height / 2f + 1.dp.toPx())
+        )
         drawCircle(
             color = Color.White,
-            radius = size.height / 2f,
+            radius = size.height / 2f - 2.dp.toPx(),
             center = Offset(thumbX, size.height / 2f),
-            style = Stroke(width = 3.dp.toPx()),
         )
     }
 }
@@ -177,8 +200,6 @@ private fun AlphaSlider(alpha: Float, onChange: (Float) -> Unit, modifier: Modif
 
     Canvas(
         modifier = modifier
-            .height(28.dp)
-            .clip(RoundedCornerShape(50))
             .pointerInput(Unit) {
                 detectTapGestures { offset -> updateFrom(offset.x, size.width) }
             }
@@ -188,36 +209,26 @@ private fun AlphaSlider(alpha: Float, onChange: (Float) -> Unit, modifier: Modif
     ) {
         drawRect(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0f), Color.Black)))
         val thumbX = alpha.coerceIn(0f, 1f) * size.width
+        
+        drawCircle(
+            color = Color.Black.copy(alpha = 0.15f),
+            radius = (size.height / 2f) + 1.dp.toPx(),
+            center = Offset(thumbX, size.height / 2f + 1.dp.toPx())
+        )
         drawCircle(
             color = Color.White,
-            radius = size.height / 2f,
+            radius = size.height / 2f - 2.dp.toPx(),
             center = Offset(thumbX, size.height / 2f),
-            style = Stroke(width = 3.dp.toPx()),
         )
     }
-}
-
-@Composable
-private fun HexField(colorArgb: Int, onColorChange: (Int) -> Unit) {
-    var text by remember(colorArgb) { mutableStateOf(argbToHex(colorArgb)) }
-
-    OutlinedTextField(
-        value = text,
-        onValueChange = { newText ->
-            text = newText
-            hexToArgb(newText)?.let(onColorChange)
-        },
-        label = { Text("Hex") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-    )
 }
 
 @Composable
 private fun ColorSwatch(colorArgb: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Canvas(
         modifier = modifier
-            .size(32.dp)
+            .size(36.dp)
+            .shadow(2.dp, CircleShape)
             .clip(CircleShape)
             .pointerInput(Unit) { detectTapGestures { onClick() } },
     ) {

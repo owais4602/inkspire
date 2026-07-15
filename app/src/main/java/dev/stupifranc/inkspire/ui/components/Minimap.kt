@@ -29,6 +29,7 @@ import dev.stupifranc.inkspire.core.Viewport
 import dev.stupifranc.inkspire.ink.toWorldToScreenMatrix
 import dev.stupifranc.inkspire.model.CanvasSpec
 import dev.stupifranc.inkspire.model.StrokeEntry
+import dev.stupifranc.inkspire.model.CanvasShape
 import kotlin.math.roundToInt
 
 @Composable
@@ -52,23 +53,18 @@ fun Minimap(
     }
 
     val renderer = remember { CanvasStrokeRenderer.create() }
+    val shape = canvasOutlineShape(canvasSpec.shape)
 
     Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 4.dp,
-        onClick = onClick
+        modifier = modifier.size(widthDp, heightDp),
+        shape = shape,
+        color = Color(canvasSpec.backgroundColorArgb),
+        shadowElevation = 24.dp,
+        onClick = onClick,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black.copy(alpha = 0.05f))
     ) {
-        Box(modifier = Modifier.padding(8.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(widthDp, heightDp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(canvasSpec.backgroundColorArgb))
-                    .border(1.dp, Color.Black.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
                     val scaleX = size.width / canvasSpec.width
                     val scaleY = size.height / canvasSpec.height
                     val mapScale = minOf(scaleX, scaleY)
@@ -96,27 +92,18 @@ fun Minimap(
                     val mapVpWidth = (vpRight.x - vpLeft.x) * mapScale
                     val mapVpHeight = (vpRight.y - vpLeft.y) * mapScale
 
-                    drawRect(
-                        color = Color(0xFFE91E63), // Vibrant pink/red for visibility
-                        topLeft = Offset(mapVpLeft, mapVpTop),
-                        size = Size(mapVpWidth, mapVpHeight),
-                        style = Stroke(width = 2.dp.toPx())
-                    )
+                    val isFullyVisible = vpLeft.x <= 1f && vpLeft.y <= 1f && 
+                                         vpRight.x >= canvasSpec.width - 1f && vpRight.y >= canvasSpec.height - 1f
+
+                    if (!isFullyVisible) {
+                        drawRect(
+                            color = Color.Gray.copy(alpha = 0.8f),
+                            topLeft = Offset(mapVpLeft, mapVpTop),
+                            size = Size(mapVpWidth, mapVpHeight),
+                            style = Stroke(width = 1.5.dp.toPx())
+                        )
+                    }
                 }
-            }
-            
-            // Zoom indicator badge overlaid on minimap
-            Surface(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp),
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
-            ) {
-                Text(
-                    "${(viewport.scale * 100).roundToInt()}%",
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
         }
     }
 }

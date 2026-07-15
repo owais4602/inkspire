@@ -85,11 +85,13 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.stupifranc.inkspire.core.PinchStep
 import dev.stupifranc.inkspire.core.PinchSteps
+import dev.stupifranc.inkspire.model.CanvasShape
 import dev.stupifranc.inkspire.model.CornerStyle
 import dev.stupifranc.inkspire.model.DrawingMeta
 import dev.stupifranc.inkspire.model.GalleryPrefs
 import dev.stupifranc.inkspire.model.ThumbSize
 import dev.stupifranc.inkspire.model.WallTone
+import dev.stupifranc.inkspire.ui.components.canvasOutlineShape
 import dev.stupifranc.inkspire.ui.components.icons.MoreIcon
 import dev.stupifranc.inkspire.ui.components.icons.PlusIcon
 import dev.stupifranc.inkspire.ui.components.icons.TuneIcon
@@ -356,24 +358,7 @@ private fun GalleryHeader(pieceCount: Int, tokens: GalleryTokens, onOpenCustomiz
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Top,
     ) {
-        Column {
-            Text(
-                "Inkspire",
-                fontFamily = FontFamily.Serif,
-                fontSize = 38.sp,
-                color = tokens.textPrimary,
-                letterSpacing = 0.5.sp,
-            )
-            if (pieceCount > 0) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    if (pieceCount == 1) "1 piece" else "$pieceCount pieces",
-                    fontSize = 13.sp,
-                    color = tokens.textDim,
-                    letterSpacing = 0.2.sp,
-                )
-            }
-        }
+        Box(modifier = Modifier.weight(1f)) // Spacer to push the tune icon to the right
         Box(
             modifier = Modifier
                 .padding(top = 4.dp)
@@ -404,7 +389,13 @@ private fun GalleryPiece(
     } else {
         FALLBACK_CARD_RATIO
     }
-    val cornerShape = RoundedCornerShape(prefs.cornerStyle.radiusDp.dp)
+    // A drawing's own canvas shape (rounded/circle) is a deliberate per-piece choice and takes
+    // priority over the gallery-wide corner-style preference, which only applies to plain rectangles.
+    val cornerShape = if (meta.shape == CanvasShape.RECTANGLE) {
+        RoundedCornerShape(prefs.cornerStyle.radiusDp.dp)
+    } else {
+        canvasOutlineShape(meta.shape)
+    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         // The artwork itself is the card — framed by an optional hairline, captioned beneath like a museum label.
@@ -413,7 +404,7 @@ private fun GalleryPiece(
                 .fillMaxWidth()
                 .aspectRatio(ratio)
                 .clip(cornerShape)
-                .background(Color(meta.backgroundColorArgb))
+                .background(if (meta.backgroundColorArgb == 0) tokens.surface else Color(meta.backgroundColorArgb))
                 .then(if (prefs.borderEnabled) Modifier.border(1.dp, tokens.hairline, cornerShape) else Modifier)
                 .combinedClickable(onClick = onClick, onLongClick = { menuExpanded = true }),
         ) {
@@ -429,40 +420,9 @@ private fun GalleryPiece(
                 )
             }
         }
-        if (prefs.showCaptions) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        meta.name,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = tokens.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        relativeEditTime(meta.updatedAtEpochMillis),
-                        fontSize = 11.sp,
-                        color = tokens.textDim,
-                    )
-                }
-                Box {
-                    Box(modifier = Modifier.clickable { menuExpanded = true }.padding(6.dp)) {
-                        MoreIcon(tint = tokens.textDim)
-                    }
-                    PieceMenu(menuExpanded, tokens, { menuExpanded = false }, onRename, onDuplicate, onDelete)
-                }
-            }
-        } else {
-            // Captions off: no title/timestamp/menu-icon row, but the long-press menu (armed above) still
-            // needs an anchor, and the grid still wants breathing room where the caption row used to be.
-            Box(modifier = Modifier.fillMaxWidth().height(8.dp)) {
-                PieceMenu(menuExpanded, tokens, { menuExpanded = false }, onRename, onDuplicate, onDelete)
-            }
+        // Long-press menu anchor and grid breathing room
+        Box(modifier = Modifier.fillMaxWidth().height(8.dp)) {
+            PieceMenu(menuExpanded, tokens, { menuExpanded = false }, onRename, onDuplicate, onDelete)
         }
     }
 }
@@ -601,10 +561,7 @@ private fun GalleryCustomizationSheet(
             )
             Spacer(modifier = Modifier.height(24.dp))
 
-            SheetSwitchRow("Captions", prefs.showCaptions, tokens) {
-                onPrefsChange(prefs.copy(showCaptions = it))
-            }
-            Spacer(modifier = Modifier.height(20.dp))
+            // Removed Captions toggle
 
             SheetSectionLabel("Wall", tokens)
             SegmentedRow(
