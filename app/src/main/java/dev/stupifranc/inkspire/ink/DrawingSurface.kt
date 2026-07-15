@@ -40,6 +40,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.input.motionprediction.MotionEventPredictor
 import androidx.ink.authoring.InProgressStrokeId
 import androidx.ink.authoring.InProgressStrokesFinishedListener
 import androidx.ink.authoring.InProgressStrokesView
@@ -206,9 +207,8 @@ fun DrawingSurface(
                     val nativeCanvas = canvas.nativeCanvas
                     nativeCanvas.save()
                     nativeCanvas.concat(worldToScreen)
-                    val identity = android.graphics.Matrix()
                     currentStrokes.forEach { entry ->
-                        renderer.draw(nativeCanvas, entry.stroke, identity)
+                        renderer.draw(nativeCanvas, entry.stroke, worldToScreen)
                     }
                     nativeCanvas.restore()
                 }
@@ -229,7 +229,9 @@ fun DrawingSurface(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
-                InProgressStrokesView(context).apply {
+                val view = InProgressStrokesView(context)
+                val predictor = MotionEventPredictor.newInstance(view)
+                view.apply {
                     addFinishedStrokesListener(object : InProgressStrokesFinishedListener {
                         override fun onStrokesFinished(finishedStrokes: Map<InProgressStrokeId, Stroke>) {
                             val copies = finishedStrokes.values.flatMap { stroke ->
@@ -266,6 +268,7 @@ fun DrawingSurface(
                             onDoubleTapZoom = { p -> onDoubleTapZoomState.value(p) },
                             onPlaceCenter = onPlaceCenterState.value,
                             onStrokeActiveChanged = { strokeInProgress = it },
+                            predictor = predictor,
                         )
                     }
                 }
@@ -440,6 +443,7 @@ private fun handleTouch(
     onDoubleTapZoom: (Point) -> Unit,
     onPlaceCenter: (Point) -> Unit,
     onStrokeActiveChanged: (Boolean) -> Unit,
+    predictor: MotionEventPredictor,
 ): Boolean {
     if (event.pointerCount >= 2 || panZoomState.active) {
         strokeTouchState.activeStrokeId?.let { view.cancelStroke(it, event) }
@@ -480,6 +484,7 @@ private fun handleTouch(
             canvasSpec = canvasSpec,
             stylusOnly = stylusOnly,
             onStrokeActiveChanged = onStrokeActiveChanged,
+            predictor = predictor,
         )
     }
 }
@@ -623,11 +628,16 @@ private fun handlePenTouch(
     canvasSpec: CanvasSpec,
     stylusOnly: Boolean,
     onStrokeActiveChanged: (Boolean) -> Unit,
+    predictor: MotionEventPredictor,
 ): Boolean {
-    if (stylusOnly && event.getToolType(event.actionIndex) != android.view.MotionEvent.TOOL_TYPE_STYLUS) {
+    val tt = event.getToolType(event.actionIndex)
+    if (stylusOnly && tt != android.view.MotionEvent.TOOL_TYPE_STYLUS && tt != android.view.MotionEvent.TOOL_TYPE_ERASER) {
         return false
     }
     
+    predictor.record(event)
+    
+
     when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> {
             if (touchState.activeStrokeId != null) return false
@@ -635,9 +645,9 @@ private fun handlePenTouch(
             touchState.activePointerId = pointerId
             touchState.activeGroupId = java.util.UUID.randomUUID().toString()
 
-            // Only start real ink outside the page boundary is a no-op, but the touch is still
-            // consumed so the eventual ACTION_UP reaches us for double-tap-to-fit detection.
+            // Starting outside the page is a no-op but the touch is still consumed so the gesture doesn't leak elsewhere.
             if (canvasSpec.contains(viewport.screenToDocument(Point(event.x, event.y)))) {
+                view.requestUnbufferedDispatch(event)
                 touchState.activeStrokeId = view.startStroke(event, pointerId, brush, screenToWorld)
                 onStrokeActiveChanged(true)
             }
@@ -647,7 +657,12 @@ private fun handlePenTouch(
             val strokeId = touchState.activeStrokeId ?: return false
             if (event.findPointerIndex(touchState.activePointerId) == -1) return false
 
-            view.addToStroke(event, touchState.activePointerId, strokeId)
+            val predicted = predictor.predict()
+            try {
+                view.addToStroke(event, touchState.activePointerId, strokeId, predicted)
+            } finally {
+                predicted?.recycle()
+            }
             return true
         }
         MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {

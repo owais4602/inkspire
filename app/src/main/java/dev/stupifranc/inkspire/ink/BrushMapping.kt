@@ -6,7 +6,7 @@ import androidx.ink.brush.StockBrushes
 import dev.stupifranc.inkspire.model.BrushFamilyChoice
 import dev.stupifranc.inkspire.model.BrushSpec
 
-private const val DEFAULT_EPSILON = 0.1f
+private const val DEFAULT_EPSILON = 0.0078125f // 0.25 world units ÷ Viewport.MAX_SCALE (32): keeps quantization ≤ 1 px at max zoom, per the Ink epsilon guidance
 
 fun BrushFamilyChoice.toBrushFamily(): BrushFamily = when (this) {
     BrushFamilyChoice.PEN -> StockBrushes.marker()

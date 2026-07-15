@@ -70,6 +70,7 @@ dependencies {
     implementation(libs.androidx.ink.geometry)
     implementation(libs.androidx.ink.rendering)
     implementation(libs.androidx.ink.storage)
+    implementation(libs.androidx.input.motionprediction)
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)

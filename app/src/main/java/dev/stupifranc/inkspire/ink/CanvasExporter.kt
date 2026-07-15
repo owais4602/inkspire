@@ -37,9 +37,9 @@ object CanvasExporter {
 
         val renderer = CanvasStrokeRenderer.create()
         canvas.save()
-        canvas.scale(scale, scale)
-        val identity = Matrix()
-        strokes.forEach { entry -> renderer.draw(canvas, entry.stroke, identity) }
+        val scaleMatrix = Matrix().apply { setScale(scale, scale) }
+        canvas.concat(scaleMatrix)
+        strokes.forEach { entry -> renderer.draw(canvas, entry.stroke, scaleMatrix) }
         canvas.restore()
         return bitmap
     }

@@ -76,9 +76,8 @@ fun Minimap(
                         val nativeCanvas = canvas.nativeCanvas
                         nativeCanvas.save()
                         nativeCanvas.concat(worldToScreen)
-                        val identity = android.graphics.Matrix()
                         strokes.forEach { entry ->
-                            renderer.draw(nativeCanvas, entry.stroke, identity)
+                            renderer.draw(nativeCanvas, entry.stroke, worldToScreen)
                         }
                         nativeCanvas.restore()
                     }

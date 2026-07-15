@@ -11,6 +11,7 @@ ink = "1.0.0"
 junit = "4.13.2"
 truth = "1.4.4"
 coreKtx = "1.15.0"
+inputMotionprediction = "1.0.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -37,6 +38,7 @@ androidx-ink-strokes = { group = "androidx.ink", name = "ink-strokes", version.r
 androidx-ink-geometry = { group = "androidx.ink", name = "ink-geometry", version.ref = "ink" }
 androidx-ink-rendering = { group = "androidx.ink", name = "ink-rendering", version.ref = "ink" }
 androidx-ink-storage = { group = "androidx.ink", name = "ink-storage", version.ref = "ink" }
+androidx-input-motionprediction = { group = "androidx.input", name = "input-motionprediction", version.ref = "inputMotionprediction" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
