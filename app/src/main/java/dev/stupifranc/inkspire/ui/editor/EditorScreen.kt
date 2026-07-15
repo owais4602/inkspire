@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -94,7 +95,8 @@ fun EditorScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // targetSdk 35 enforces edge-to-edge; the editor pads itself (the gallery draws full-bleed instead).
+    Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         DrawingSurface(
             strokes = viewModel.strokes,
             tool = viewModel.tool,
@@ -144,6 +146,7 @@ fun EditorScreen(
                 shape = RoundedCornerShape(50),
                 color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 2.dp,
+                onClick = viewModel::fitToScreen,
             ) {
                 Text(
                     "${(viewModel.viewport.scale * 100).roundToInt()}%",

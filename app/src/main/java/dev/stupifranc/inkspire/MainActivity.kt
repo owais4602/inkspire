@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -35,8 +34,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun InkspireApp() {
     MaterialTheme {
-        // targetSdk 35 enforces edge-to-edge; without this the toolbar draws under the status bar / nav bar.
-        Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+        // targetSdk 35 enforces edge-to-edge; insets are handled per-screen (the editor pads itself,
+        // the gallery draws its dark wall full-bleed and pads only its content).
+        Surface(modifier = Modifier.fillMaxSize()) {
             val navController = rememberNavController()
             NavHost(navController = navController, startDestination = ROUTE_GALLERY) {
                 composable(ROUTE_GALLERY) {
