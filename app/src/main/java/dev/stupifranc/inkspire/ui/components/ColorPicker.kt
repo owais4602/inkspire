@@ -41,6 +41,7 @@ fun ColorPicker(
     recentColors: List<Int>,
     onColorChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    showAlphaSlider: Boolean = true,
 ) {
     val hsva = argbToHsva(colorArgb)
 
@@ -65,13 +66,15 @@ fun ColorPicker(
                 .height(28.dp),
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        if (showAlphaSlider) {
+            Spacer(modifier = Modifier.height(12.dp))
 
-        AlphaSlider(
-            alpha = hsva.alpha,
-            onChange = { a -> onColorChange(hsvaToArgb(hsva.copy(alpha = a))) },
-            modifier = Modifier.fillMaxWidth(),
-        )
+            AlphaSlider(
+                alpha = hsva.alpha,
+                onChange = { a -> onColorChange(hsvaToArgb(hsva.copy(alpha = a))) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 

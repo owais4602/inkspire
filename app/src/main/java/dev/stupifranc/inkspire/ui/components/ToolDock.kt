@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +21,9 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +37,7 @@ import dev.stupifranc.inkspire.model.BrushFamilyChoice
 import dev.stupifranc.inkspire.model.Tool
 import dev.stupifranc.inkspire.ui.components.icons.EraserIcon
 import dev.stupifranc.inkspire.ui.components.icons.ExportIcon
+import dev.stupifranc.inkspire.ui.components.icons.HandIcon
 import dev.stupifranc.inkspire.ui.components.icons.HighlighterIcon
 import dev.stupifranc.inkspire.ui.components.icons.MarkerIcon
 import dev.stupifranc.inkspire.ui.components.icons.MoreIcon
@@ -55,18 +59,29 @@ fun ToolDock(
     symmetryEnabled: Boolean,
     symmetrySectors: Int,
     symmetryMirror: Boolean,
+    awaitingCenterPlacement: Boolean,
+    canvasColorArgb: Int,
+    collapseSignal: Int,
     onSelectBrush: (BrushFamilyChoice) -> Unit,
     onSelectEraser: () -> Unit,
+    onSelectHand: () -> Unit,
     onSizeChange: (Float) -> Unit,
     onToggleSymmetry: () -> Unit,
     onSymmetrySectorsChange: (Int) -> Unit,
     onSymmetryMirrorChange: (Boolean) -> Unit,
+    onToggleCenterPlacement: () -> Unit,
+    onResetCenter: () -> Unit,
     onColorClick: () -> Unit,
     onResize: () -> Unit,
     onExport: () -> Unit,
+    onCanvasColorClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expansion by remember { mutableStateOf(DockExpansion.NONE) }
+
+    // A touch reaching the canvas collapses whatever panel is open (the panel's own touches never
+    // trigger this — the canvas touch handler is a separate composable behind the dock).
+    LaunchedEffect(collapseSignal) { expansion = DockExpansion.NONE }
 
     fun toggle(target: DockExpansion) {
         expansion = if (expansion == target) DockExpansion.NONE else target
@@ -95,12 +110,16 @@ fun ToolDock(
                         DockExpansion.SYMMETRY -> SymmetryPanel(
                             sectors = symmetrySectors,
                             mirror = symmetryMirror,
+                            awaitingCenterPlacement = awaitingCenterPlacement,
                             onSectorsChange = onSymmetrySectorsChange,
                             onMirrorChange = onSymmetryMirrorChange,
+                            onToggleCenterPlacement = onToggleCenterPlacement,
+                            onResetCenter = onResetCenter,
                         )
                         DockExpansion.MORE -> MorePanel(
-                            onResize = onResize,
+                            canvasColorArgb = canvasColorArgb,
                             onExport = onExport,
+                            onCanvasColorClick = onCanvasColorClick,
                         )
                         DockExpansion.NONE -> Unit
                     }
@@ -137,6 +156,10 @@ fun ToolDock(
                     else { onSelectEraser(); expansion = DockExpansion.NONE }
                 }) { tint -> EraserIcon(tint) }
 
+                DockIconButton(selected = tool == Tool.PAN, onClick = {
+                    onSelectHand(); expansion = DockExpansion.NONE
+                }) { tint -> HandIcon(tint) }
+
                 DockDivider()
 
                 DockIconButton(selected = symmetryEnabled, onClick = {
@@ -154,6 +177,8 @@ fun ToolDock(
                         .clickable(onClick = onColorClick),
                 )
 
+                DockIconButton(selected = false, onClick = onResize) { tint -> ResizeIcon(tint) }
+
                 DockDivider()
 
                 DockIconButton(selected = expansion == DockExpansion.MORE, onClick = { toggle(DockExpansion.MORE) }) { tint -> MoreIcon(tint) }
@@ -166,8 +191,11 @@ fun ToolDock(
 private fun SymmetryPanel(
     sectors: Int,
     mirror: Boolean,
+    awaitingCenterPlacement: Boolean,
     onSectorsChange: (Int) -> Unit,
     onMirrorChange: (Boolean) -> Unit,
+    onToggleCenterPlacement: () -> Unit,
+    onResetCenter: () -> Unit,
 ) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -184,16 +212,33 @@ private fun SymmetryPanel(
             Text("Mirror", modifier = Modifier.padding(end = 8.dp))
             Switch(checked = mirror, onCheckedChange = onMirrorChange)
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onToggleCenterPlacement) {
+                Text(if (awaitingCenterPlacement) "Tap canvas to set center…" else "Set center")
+            }
+            TextButton(onClick = onResetCenter) { Text("Center") }
+        }
     }
 }
 
 @Composable
 private fun MorePanel(
-    onResize: () -> Unit,
+    canvasColorArgb: Int,
     onExport: () -> Unit,
+    onCanvasColorClick: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        DockIconButton(selected = false, onClick = onResize) { tint -> ResizeIcon(tint) }
         DockIconButton(selected = false, onClick = onExport) { tint -> ExportIcon(tint) }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(start = 4.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(canvasColorArgb))
+                    .border(1.dp, Color.Black.copy(alpha = 0.15f), CircleShape)
+                    .clickable(onClick = onCanvasColorClick),
+            )
+            Text("Canvas", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 2.dp))
+        }
     }
 }

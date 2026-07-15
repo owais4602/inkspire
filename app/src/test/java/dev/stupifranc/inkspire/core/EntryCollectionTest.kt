@@ -130,4 +130,40 @@ class EntryCollectionTest {
         assertThat(collection.entries.map { it.tag }).containsExactly("a!", "b!").inOrder()
         assertThat(collection.canUndo).isEqualTo(canUndoBefore)
     }
+
+    @Test
+    fun transformAll_remapsEntriesCapturedInsideAddCommand_soRedoAfterUndoUsesTransformedEntries() {
+        val collection = EntryCollection<FakeEntry>()
+        collection.add(listOf(FakeEntry("1", "a")))
+
+        collection.transformAll { it.copy(tag = it.tag + "!") }
+        collection.undo()
+        collection.redo()
+
+        assertThat(collection.entries.map { it.tag }).containsExactly("a!")
+    }
+
+    @Test
+    fun transformAll_remapsEntriesCapturedInsideEraseCommand_soUndoRestoresTransformedEntries() {
+        val collection = EntryCollection<FakeEntry>()
+        collection.add(listOf(FakeEntry("1", "a"), FakeEntry("2", "b")))
+        collection.erase(setOf("1"))
+
+        collection.transformAll { it.copy(tag = it.tag + "!") }
+        collection.undo()
+
+        assertThat(collection.entries.map { it.tag }).containsExactly("a!", "b!").inOrder()
+    }
+
+    @Test
+    fun transformAll_remapsEntriesCapturedInsideClearCommand_soUndoRestoresTransformedEntries() {
+        val collection = EntryCollection<FakeEntry>()
+        collection.add(listOf(FakeEntry("1", "a")))
+        collection.clear()
+
+        collection.transformAll { it.copy(tag = it.tag + "!") }
+        collection.undo()
+
+        assertThat(collection.entries.map { it.tag }).containsExactly("a!")
+    }
 }

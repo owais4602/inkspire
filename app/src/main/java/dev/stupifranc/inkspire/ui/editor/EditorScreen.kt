@@ -51,9 +51,11 @@ fun EditorScreen(
     ),
 ) {
     var showColorPicker by remember { mutableStateOf(false) }
+    var showCanvasColorPicker by remember { mutableStateOf(false) }
     var isResizeMode by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var pendingExportScale by remember { mutableStateOf<Int?>(null) }
+    var dockCollapseSignal by remember { mutableStateOf(0) }
     val inkBrush = remember(viewModel.brushSpec) { viewModel.brushSpec.toInkBrush() }
     val context = LocalContext.current
 
@@ -105,13 +107,16 @@ fun EditorScreen(
             symmetryConfig = viewModel.symmetryConfig,
             canvasSpec = viewModel.canvasSpec,
             viewport = viewModel.viewport,
+            awaitingCenterPlacement = viewModel.awaitingCenterPlacement,
             onStrokesFinished = viewModel::onStrokesFinished,
             onErase = viewModel::eraseHits,
             onContainerSizeChanged = viewModel::onContainerSizeChanged,
             onSymmetryCenterChanged = viewModel::moveSymmetryCenter,
+            onPlaceCenter = viewModel::placeSymmetryCenterAt,
             onPan = viewModel::panBy,
             onZoom = viewModel::zoomBy,
-            onDoubleTapFit = viewModel::fitToScreen,
+            onDoubleTapZoom = viewModel::onDoubleTap,
+            onCanvasTouchStart = { dockCollapseSignal++ },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -125,6 +130,10 @@ fun EditorScreen(
                     isResizeMode = false
                 },
                 onCancel = { isResizeMode = false },
+                onFitToContent = {
+                    viewModel.fitCanvasToContent()
+                    isResizeMode = false
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -164,18 +173,25 @@ fun EditorScreen(
                 symmetryEnabled = viewModel.symmetryEnabled,
                 symmetrySectors = viewModel.symmetrySectors,
                 symmetryMirror = viewModel.symmetryMirror,
+                awaitingCenterPlacement = viewModel.awaitingCenterPlacement,
+                canvasColorArgb = viewModel.canvasSpec.backgroundColorArgb,
+                collapseSignal = dockCollapseSignal,
                 onSelectBrush = { family ->
                     viewModel.selectBrushFamily(family)
                     viewModel.selectTool(Tool.PEN)
                 },
                 onSelectEraser = { viewModel.selectTool(Tool.ERASER) },
+                onSelectHand = { viewModel.selectTool(Tool.PAN) },
                 onSizeChange = viewModel::setSize,
                 onToggleSymmetry = viewModel::toggleSymmetryEnabled,
                 onSymmetrySectorsChange = viewModel::changeSymmetrySectors,
                 onSymmetryMirrorChange = viewModel::changeSymmetryMirror,
+                onToggleCenterPlacement = viewModel::toggleCenterPlacementArmed,
+                onResetCenter = viewModel::resetSymmetryCenter,
                 onColorClick = { showColorPicker = true },
                 onResize = { isResizeMode = true },
                 onExport = { showExportDialog = true },
+                onCanvasColorClick = { showCanvasColorPicker = true },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 20.dp),
@@ -218,6 +234,24 @@ fun EditorScreen(
                     colorArgb = viewModel.brushSpec.colorArgb,
                     recentColors = viewModel.recentColors,
                     onColorChange = viewModel::setColor,
+                )
+            },
+        )
+    }
+
+    if (showCanvasColorPicker) {
+        AlertDialog(
+            onDismissRequest = { showCanvasColorPicker = false },
+            title = { Text("Canvas color") },
+            confirmButton = {
+                TextButton(onClick = { showCanvasColorPicker = false }) { Text("Done") }
+            },
+            text = {
+                ColorPicker(
+                    colorArgb = viewModel.canvasSpec.backgroundColorArgb,
+                    recentColors = emptyList(),
+                    onColorChange = viewModel::setCanvasBackground,
+                    showAlphaSlider = false,
                 )
             },
         )

@@ -63,6 +63,7 @@ fun CanvasResizeOverlay(
     viewport: Viewport,
     onConfirm: (newWidth: Float, newHeight: Float, anchor: ResizeAnchor) -> Unit,
     onCancel: () -> Unit,
+    onFitToContent: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var pendingWidth by remember { mutableStateOf(canvasWidth) }
@@ -127,6 +128,7 @@ fun CanvasResizeOverlay(
         ) {
             Row(modifier = Modifier.padding(horizontal = 8.dp)) {
                 TextButton(onClick = onCancel) { Text("Cancel") }
+                TextButton(onClick = onFitToContent) { Text("Fit to content") }
                 TextButton(onClick = { onConfirm(pendingWidth, pendingHeight, anchor) }) { Text("Done") }
             }
         }

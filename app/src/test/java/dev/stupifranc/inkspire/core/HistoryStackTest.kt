@@ -94,6 +94,22 @@ class HistoryStackTest {
     }
 
     @Test
+    fun forEachCommand_visitsUndoAndRedoStackCommands() {
+        val log = mutableListOf<String>()
+        val stack = HistoryStack()
+        stack.push(RecordingCommand(log, "a"))
+        stack.push(RecordingCommand(log, "b"))
+        stack.undo()
+
+        val visited = mutableListOf<UndoableCommand>()
+        stack.forEachCommand { visited.add(it) }
+
+        assertThat(visited).hasSize(2)
+        assertThat(stack.canUndo).isTrue()
+        assertThat(stack.canRedo).isTrue()
+    }
+
+    @Test
     fun clear_removesAllHistory() {
         val log = mutableListOf<String>()
         val stack = HistoryStack()

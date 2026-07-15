@@ -74,6 +74,29 @@ fun EraserIcon(tint: Color, modifier: Modifier = Modifier) {
 }
 
 @Composable
+fun HandIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        // palm
+        drawRoundRect(
+            tint,
+            topLeft = Offset(w * 0.26f, h * 0.42f),
+            size = Size(w * 0.5f, h * 0.42f),
+            cornerRadius = CornerRadius(w * 0.14f),
+            style = stroke,
+        )
+        // fingers
+        val fingerTopYs = listOf(0.16f, 0.12f, 0.14f, 0.22f)
+        val fingerXs = listOf(0.34f, 0.46f, 0.58f, 0.7f)
+        fingerXs.forEachIndexed { i, fx ->
+            drawLine(tint, Offset(w * fx, h * 0.44f), Offset(w * fx, h * fingerTopYs[i]), stroke.width, stroke.cap)
+        }
+    }
+}
+
+@Composable
 fun SymmetryIcon(tint: Color, modifier: Modifier = Modifier) {
     IconCanvas(modifier) {
         val center = Offset(size.width / 2f, size.height / 2f)

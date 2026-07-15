@@ -34,4 +34,10 @@ class HistoryStack(private val maxSize: Int = 100) {
         undoStack.clear()
         redoStack.clear()
     }
+
+    /** Visits every pending command (both stacks) — used to remap commands' captured entry snapshots. */
+    fun forEachCommand(action: (UndoableCommand) -> Unit) {
+        undoStack.forEach(action)
+        redoStack.forEach(action)
+    }
 }

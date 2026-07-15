@@ -11,15 +11,19 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import dev.stupifranc.inkspire.core.BoundingBox
+import dev.stupifranc.inkspire.core.ContentBounds
 import dev.stupifranc.inkspire.core.EntryCollection
 import dev.stupifranc.inkspire.core.Point
 import dev.stupifranc.inkspire.core.ResizeAnchor
 import dev.stupifranc.inkspire.core.SymmetryConfig
 import dev.stupifranc.inkspire.core.Viewport
+import dev.stupifranc.inkspire.core.clampToRect
 import dev.stupifranc.inkspire.data.DrawingRepository
 import dev.stupifranc.inkspire.data.RecentColorsStore
 import dev.stupifranc.inkspire.ink.CanvasExporter
 import dev.stupifranc.inkspire.ink.StrokeStore
+import dev.stupifranc.inkspire.ink.boundingBox
 import dev.stupifranc.inkspire.ink.translatedBy
 import dev.stupifranc.inkspire.model.BrushFamilyChoice
 import dev.stupifranc.inkspire.model.BrushSpec
@@ -36,6 +40,8 @@ import kotlinx.coroutines.launch
 private const val DEFAULT_SYMMETRY_SECTORS = 6
 private val SYMMETRY_SECTOR_RANGE = 1..12
 private const val AUTOSAVE_DEBOUNCE_MILLIS = 2000L
+private const val CONTENT_FIT_PADDING_PX = 80f
+private const val PAN_MARGIN_FRACTION = 1f / 3f
 
 private val DEFAULT_SIZES = mapOf(
     BrushFamilyChoice.PRESSURE_PEN to 8f,
@@ -75,6 +81,8 @@ class EditorViewModel(application: Application, private val drawingId: String) :
     var symmetryMirror by mutableStateOf(false)
         private set
     private var symmetryCenter by mutableStateOf<Point?>(null)
+    var awaitingCenterPlacement by mutableStateOf(false)
+        private set
 
     var canvasSpec by mutableStateOf(loadInitialCanvasSpec())
         private set
@@ -109,6 +117,7 @@ class EditorViewModel(application: Application, private val drawingId: String) :
 
     fun toggleSymmetryEnabled() {
         symmetryEnabled = !symmetryEnabled
+        if (!symmetryEnabled) awaitingCenterPlacement = false
     }
 
     fun changeSymmetrySectors(sectors: Int) {
@@ -119,8 +128,25 @@ class EditorViewModel(application: Application, private val drawingId: String) :
         symmetryMirror = mirror
     }
 
+    /** Applied on both handle drag and tap-place — the center can never leave the page. */
     fun moveSymmetryCenter(center: Point) {
-        symmetryCenter = center
+        symmetryCenter = clampToRect(center, canvasSpec.width, canvasSpec.height)
+    }
+
+    fun resetSymmetryCenter() {
+        symmetryCenter = Point(canvasSpec.width / 2f, canvasSpec.height / 2f)
+    }
+
+    /** Arms/disarms the one-shot "tap the canvas to place the symmetry center" mode. */
+    fun toggleCenterPlacementArmed() {
+        awaitingCenterPlacement = !awaitingCenterPlacement
+    }
+
+    /** Consumes an armed tap-to-place: moves the center there and disarms. No-op if not armed. */
+    fun placeSymmetryCenterAt(point: Point) {
+        if (!awaitingCenterPlacement) return
+        moveSymmetryCenter(point)
+        awaitingCenterPlacement = false
     }
 
     fun onContainerSizeChanged(width: Float, height: Float) {
@@ -137,43 +163,72 @@ class EditorViewModel(application: Application, private val drawingId: String) :
         if (symmetryCenter == null) {
             symmetryCenter = Point(canvasSpec.width / 2f, canvasSpec.height / 2f)
         }
-        viewport = viewport.clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight)
+        viewport = viewport.clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight, panMargin())
     }
+
+    /** Pan may overshoot each page edge by this much (screen px) — off-page ink (e.g. symmetry replicas) stays reachable. */
+    private fun panMargin(): Float = minOf(containerWidth, containerHeight) * PAN_MARGIN_FRACTION
+
+    private fun contentUnion(): BoundingBox =
+        ContentBounds.union(collection.entries.mapNotNull { it.boundingBox() }, canvasSpec.width, canvasSpec.height)
 
     fun panBy(dx: Float, dy: Float) {
         viewport = viewport.pannedBy(dx, dy)
-            .clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight)
+            .clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight, panMargin())
     }
 
     fun zoomBy(factor: Float, focal: Point) {
         viewport = viewport.zoomedBy(factor, focal)
-            .clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight)
+            .clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight, panMargin())
     }
 
+    /** Always fits *everything* — the page union'd with the drawing's content bounds, not just the page. */
     fun fitToScreen() {
-        viewport = Viewport.fit(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight)
+        val union = contentUnion()
+        viewport = Viewport.fitRect(union.minX, union.minY, union.width, union.height, containerWidth, containerHeight)
+    }
+
+    /** Double-tap: from (near) fit, zooms in 3x centered on the tap; otherwise fits everything again. */
+    fun onDoubleTap(tapScreen: Point) {
+        val union = contentUnion()
+        viewport = viewport.doubleTapTarget(union.minX, union.minY, union.width, union.height, containerWidth, containerHeight, tapScreen)
     }
 
     fun resizeCanvas(newWidth: Float, newHeight: Float, anchor: ResizeAnchor) {
         if (newWidth <= 0f || newHeight <= 0f) return
         val offset = ResizeAnchor.offset(canvasSpec.width, canvasSpec.height, newWidth, newHeight, anchor)
-        if (offset.x != 0f || offset.y != 0f) {
-            collection.transformAll { entry -> entry.copy(stroke = entry.stroke.translatedBy(offset.x, offset.y)) }
-            sync()
-        }
-        symmetryCenter = symmetryCenter?.let { Point(it.x + offset.x, it.y + offset.y) }
+        applyContentTranslation(offset.x, offset.y)
         canvasSpec = canvasSpec.copy(width = newWidth, height = newHeight)
-        viewport = viewport.clampedTo(newWidth, newHeight, containerWidth, containerHeight)
+        viewport = viewport.clampedTo(newWidth, newHeight, containerWidth, containerHeight, panMargin())
         scheduleAutosave()
     }
 
+    /** Resizes the page to the minimal bounds covering all content (never smaller than the existing floor), translating strokes to match. No-op if there's no content. */
+    fun fitCanvasToContent() {
+        val result = ContentBounds.compute(collection.entries.mapNotNull { it.boundingBox() }, CONTENT_FIT_PADDING_PX) ?: return
+        applyContentTranslation(-result.offsetX, -result.offsetY)
+        canvasSpec = canvasSpec.copy(width = result.width, height = result.height)
+        viewport = viewport.clampedTo(result.width, result.height, containerWidth, containerHeight, panMargin())
+        scheduleAutosave()
+    }
+
+    private fun applyContentTranslation(dx: Float, dy: Float) {
+        if (dx != 0f || dy != 0f) {
+            collection.transformAll { entry -> entry.copy(stroke = entry.stroke.translatedBy(dx, dy)) }
+            sync()
+        }
+        symmetryCenter = symmetryCenter?.let { Point(it.x + dx, it.y + dy) }
+    }
+
+    /** The page fill is always opaque — a translucent page over the workspace gray would read as a rendering bug. */
     fun setCanvasBackground(colorArgb: Int) {
-        canvasSpec = canvasSpec.copy(backgroundColorArgb = colorArgb)
+        canvasSpec = canvasSpec.copy(backgroundColorArgb = colorArgb or (0xFF shl 24))
         scheduleAutosave()
     }
 
     fun selectTool(newTool: Tool) {
         tool = newTool
+        awaitingCenterPlacement = false
     }
 
     fun selectBrushFamily(family: BrushFamilyChoice) {
