@@ -422,6 +422,8 @@ In `ink/BrushMapping.kt` change `private const val DEFAULT_EPSILON = 0.1f` → `
 
 ## M9a spec — gallery drag-to-reorder, float-and-drop (planned 2026-07-16; REPLACES the threshold reorder in the current working tree)
 
+**Status (2026-07-16):** DONE. Code-complete, tests passing, committed. Pending on-device verification alongside M5/M7/M8 debt.
+
 **Goal:** Long-press a gallery card → it lifts with a spring and follows the finger anywhere, including **down/up across rows** → the card it hovers over highlights as the drop target → release → the grid animates once into the new order, which persists. The user has already judged the current working-tree behavior "very odd and unnatural" — smoothness is the acceptance criterion, not a nicety.
 
 **Interaction model — float-and-drop, NOT live reorder (the rethink, decided 2026-07-16):** while dragging, the grid does **not** reorder. The dragged card floats above it; the card currently under the drag point gets a highlight; the actual reorder happens exactly once, on release, animated by `animateItem()`. Rationale: this is a *staggered* grid with heterogeneous item heights — live mid-drag reordering reflows the whole grid on every swap, which can move a different card under the finger and oscillate (inherent jank, not tunable), and it requires fragile drag-offset re-anchoring math. Float-and-drop has zero mid-drag reflow by construction, needs no offset correction, and is the same mental model as dragging an app icon. Do not "upgrade" it to live reorder without an on-device verdict demanding it.
