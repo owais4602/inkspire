@@ -16,4 +16,6 @@ data class DrawingMeta(
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,
     val hasThumbnail: Boolean = false,
+    val orderIndex: Long = 0L,
+    val isPinned: Boolean = false,
 )

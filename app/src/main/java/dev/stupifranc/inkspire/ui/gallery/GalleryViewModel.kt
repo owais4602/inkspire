@@ -5,7 +5,7 @@ import android.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -15,9 +15,11 @@ import dev.stupifranc.inkspire.model.AppPrefs
 import dev.stupifranc.inkspire.model.DrawingMeta
 import java.io.File
 
-class GalleryViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = DrawingRepository(File(application.filesDir, "drawings"))
-    private val prefsStore = AppPrefsStore(File(application.filesDir, "app_prefs"))
+class GalleryViewModel(
+    private val repository: DrawingRepository,
+    private val prefsStore: AppPrefsStore,
+    private val isSystemDark: () -> Boolean,
+) : ViewModel() {
 
     var drawings by mutableStateOf<List<DrawingMeta>>(emptyList())
         private set
@@ -26,8 +28,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         private set
 
     init {
-        refresh()
         prefs = prefsStore.load()
+        refresh()
     }
 
     fun updatePrefs(newPrefs: AppPrefs) {
@@ -39,10 +41,24 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         drawings = repository.listDrawings()
     }
 
+    fun togglePin(id: String) {
+        repository.togglePin(id)
+        refresh()
+    }
+
+    fun reorderDrawings(fromIndex: Int, toIndex: Int) {
+        val currentDrawings = drawings.toMutableList()
+        val item = currentDrawings.removeAt(fromIndex)
+        currentDrawings.add(toIndex, item)
+        // Optimistically update UI
+        drawings = currentDrawings
+        // Save new order to disk
+        repository.updateDrawingOrder(currentDrawings.map { it.id })
+    }
+
     /** Width/height start at 0 — the editor fills the document to whatever viewport first appears, same as a fresh install. */
     fun createDrawing(): DrawingMeta {
-        val isDark = (getApplication<Application>().resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val defaultBg = if (isDark) 0xFF1C1B1F.toInt() else 0xFFFFFFFF.toInt()
+        val defaultBg = if (isSystemDark()) 0xFF1C1B1F.toInt() else 0xFFFFFFFF.toInt()
         val meta = repository.createDrawing(name = "Untitled", width = 0f, height = 0f, backgroundColorArgb = defaultBg)
         refresh()
         return meta
@@ -68,7 +84,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     companion object {
         fun factory(application: Application): ViewModelProvider.Factory =
             viewModelFactory {
-                initializer { GalleryViewModel(application) }
+                initializer {
+                    val repo = DrawingRepository(File(application.filesDir, "drawings"))
+                    val prefs = AppPrefsStore(File(application.filesDir, "app_prefs"))
+                    val isDark = { (application.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES }
+                    GalleryViewModel(repo, prefs, isDark)
+                }
             }
     }
 }

@@ -402,6 +402,76 @@ In `ink/BrushMapping.kt` change `private const val DEFAULT_EPSILON = 0.1f` → `
   - **No regressions**: first stroke still appears with no priming tap (`Tool.NONE` fix intact); two-finger pinch mid-stroke still cancels cleanly; eraser and stylus-only toggle still behave; fast scribble shows no new latency (step 4's epsilon cost).
 - Only after this pass may any "matches Google Keep" language be used, and only per round 1 rule 10's honesty requirements.
 
+## M9 spec — Spatial Gallery (planned 2026-07-16)
+
+**Goal:** Transform the gallery from a standard `LazyVerticalStaggeredGrid` into an infinite spatial workspace ("pinboard" or "desk").
+**Key Features:**
+1. **Spatial Coordinates:** Update `model/DrawingMeta.kt` to include `galleryX: Float`, `galleryY: Float`, `galleryScale: Float = 1f`, `isPinned: Boolean = false`.
+2. **Infinite Gallery Viewport:** Replicate the editor's panning/zooming capability for the gallery background. 
+3. **Item Manipulation:** Drag unpinned drawings to move them. Pinch to resize. Dragging a pinned drawing pans the gallery.
+4. **Cinematic Focus Mode:** Long press on a thumbnail blurs the background and animates the thumbnail to the center of the screen, revealing options (Open, Pin/Unlock, Rename, Duplicate, Delete) around it.
+
+**Work Order:**
+1. **Data Update & Migration:** Update `DrawingMeta` and implement auto-scattering or grid-fallback logic for unplaced legacy drawings.
+2. **Viewport Logic:** Integrate `core/Viewport.kt` into the `GalleryScreen` / `GalleryViewModel` to manage the spatial pan/zoom.
+3. **Spatial UI:** Replace `LazyVerticalStaggeredGrid` with a `Box` where items are placed using `Modifier.graphicsLayer` for their X/Y offsets and scales.
+4. **Gestures:** Implement a custom pointer input handler on thumbnails (drag to move if unpinned, pinch to resize, long press for Focus Mode).
+5. **Focus Mode UI:** Add a translucent/blur overlay that activates on long press. Animate the focused thumbnail and display action buttons.
+
+**Status (2026-07-16):** DEFERRED in favor of the scoped-down M9a below. A partial first pass (pin, focus overlay, and a threshold-based reorder) landed in the working tree; M9a replaces the reorder mechanic and keeps the rest. The full spatial/pinboard gallery stays on the shelf until M9a has an on-device verdict.
+
+## M9a spec — gallery drag-to-reorder, float-and-drop (planned 2026-07-16; REPLACES the threshold reorder in the current working tree)
+
+**Goal:** Long-press a gallery card → it lifts with a spring and follows the finger anywhere, including **down/up across rows** → the card it hovers over highlights as the drop target → release → the grid animates once into the new order, which persists. The user has already judged the current working-tree behavior "very odd and unnatural" — smoothness is the acceptance criterion, not a nicety.
+
+**Interaction model — float-and-drop, NOT live reorder (the rethink, decided 2026-07-16):** while dragging, the grid does **not** reorder. The dragged card floats above it; the card currently under the drag point gets a highlight; the actual reorder happens exactly once, on release, animated by `animateItem()`. Rationale: this is a *staggered* grid with heterogeneous item heights — live mid-drag reordering reflows the whole grid on every swap, which can move a different card under the finger and oscillate (inherent jank, not tunable), and it requires fragile drag-offset re-anchoring math. Float-and-drop has zero mid-drag reflow by construction, needs no offset correction, and is the same mental model as dragging an app icon. Do not "upgrade" it to live reorder without an on-device verdict demanding it.
+
+**What already exists in the working tree (KEEP, do not rebuild):** `DrawingMeta.orderIndex`/`isPinned`, `DrawingRepository.togglePin`/`updateDrawingOrder`, the long-press focus overlay (Open/Pin/Rename/Duplicate/Delete), async thumbnail decode via `produceState`, and the `GalleryViewModel` constructor-DI refactor.
+
+**What must be DELETED and replaced:** the `cumulativeDragX/Y` threshold logic inside `GalleryScreen`'s `items(...)` block (the `> 150f` / `> 200f` branches). It hard-assumes a 2-column grid (`±2` index for vertical) — the grid is `StaggeredGridCells.Adaptive`, so column count varies with thumbnail-size prefs and screen width. It also never moves the card under the finger and writes to disk on every threshold crossing. Delete it wholesale; do not extend it.
+
+**Known traps for this milestone — read before coding:**
+1. **Never assume a column count.** The drop target must come from hit-testing against real item layout positions (`LazyStaggeredGridState.layoutInfo.visibleItemsInfo`), never from index arithmetic like `index + 2`.
+2. **The header is item 0** in `visibleItemsInfo` (the `GalleryHeader` is a grid item with `FullLine` span). Match items by **key** (`meta.id`), never by raw grid index, and skip any item whose key is not a drawing id when building hit-test boxes.
+3. **No reorder and no disk writes during the drag.** The one reorder happens on release: memory move → single `updateDrawingOrder` write. `animateItem()` stays on every card (nothing reorders mid-drag, so it never fights the float).
+4. **Every motion must be spring-animated, none instant**: lift scale/shadow animate in (`animateFloatAsState`, spring), the drop-target highlight animates, and a drop with no valid target springs the card back to its slot (`Animatable<Offset>`) — an instant snap is exactly the "unnatural" feel being fixed.
+5. **Don't break the two existing gesture consumers**: one-finger scroll on the grid, and M7's two-pointer `detectPinchToStepThumbnails` (it consumes on `PointerEventPass.Initial` only when 2+ pointers are down — the drag here is single-pointer after long-press, so they coexist; verify on-device anyway).
+
+**Work order (tests first where logic is pure — standing rule):**
+
+0. **Checkpoint commit.** The working tree (M9 spec text, pin/focus/threshold-reorder pass, thumbnail + DI refactors) is uncommitted. Run `./gradlew test assembleDebug`; when green, commit as `gallery: pin, focus overlay, order plumbing — reorder baseline (superseded by m9a)`. The M9a diff must be reviewable against a committed baseline (same rationale as M7 step 0).
+1. **Order semantics in `data/DrawingRepository.kt` — tests FIRST (`DrawingRepositoryTest`, plain JVM).**
+   - `listDrawings()` sorts by `isPinned` desc, then `orderIndex` asc. Drop `updatedAtEpochMillis` from the comparator — with legacy all-zero indices it makes order churn on every edit.
+   - **Legacy normalization:** in `listDrawings()`, if any two entries share an `orderIndex`, renumber the whole list (pinned first, then most-recently-updated first) to sequential 0..n-1 and `writeIndex` once. Idempotent after first run.
+   - `createDrawing(...)` and `duplicate(...)` assign `orderIndex = (existing min orderIndex) - 1` so new/duplicated drawings appear at the top (preserves today's newest-first feel).
+   - Tests: reorder round-trips through `updateDrawingOrder`; duplicate-index normalization renumbers once and is stable; new drawing lands first; pinned floats above unpinned regardless of `orderIndex`; `updateDrawingOrder` with a stale/partial id list keeps unlisted drawings (existing behavior, lock it in).
+2. **`core/ReorderTarget.kt` (pure Kotlin, no Compose imports) — tests FIRST (`ReorderTargetTest`).**
+   - `data class ItemBox(val key: String, val left: Float, val top: Float, val width: Float, val height: Float)`
+   - `fun reorderTarget(dragX: Float, dragY: Float, boxes: List<ItemBox>, draggedKey: String): String?` — returns the key of the box containing the drag point, or null if none / it's the dragged item's own box. Contains = `left <= x < left+width && top <= y < top+height`.
+   - Tests: point inside another box → that key; inside own box → null; in a gap/outside all boxes → null; boundary point per the contains rule above.
+3. **Gesture + float visuals in `ui/gallery/GalleryScreen.kt`.** Hoist to screen level: `val gridState = rememberLazyStaggeredGridState()` (pass to the grid), `var draggedId by remember { mutableStateOf<String?>(null) }`, `val dragOffset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }`, `var dropTargetId by remember { mutableStateOf<String?>(null) }`, `val scope = rememberCoroutineScope()`. Per card, `detectDragGesturesAfterLongPress(key = meta.id)`:
+   - `onDragStart(startPosition)`: `draggedId = meta.id`; `scope.launch { dragOffset.snapTo(Offset.Zero) }`; haptic tick (`LocalHapticFeedback`, `LongPress`). Record the finger's position in grid coordinates: this item's `offset` from `visibleItemsInfo` (found by key) + `startPosition`, kept updated in `onDrag` by adding `dragAmount` — the **finger point** (not the card center) is what hit-tests, so the target is always the card visibly under the fingertip.
+   - `onDrag`: `change.consume()`; `scope.launch { dragOffset.snapTo(dragOffset.value + dragAmount) }` (snap, not animate — the card must track the finger 1:1; the springs live in lift/settle, not tracking). Update the finger point; build `List<ItemBox>` from `visibleItemsInfo` (skip the header key); `dropTargetId = reorderTarget(fingerX, fingerY, boxes, meta.id)`. Fire one haptic `TextHandleMove` tick when `dropTargetId` *changes* to a new non-null value.
+   - `onDragEnd` **with zero `onDrag` calls in between** (a plain long-press): open the focus overlay (`focusedDrawingId = meta.id`) — replaces the current set-then-unset hack, and the overlay no longer flashes at the start of every drag. `onDragEnd` after a real drag: if `dropTargetId != null` → `viewModel.dropOnto(meta.id, dropTargetId!!)` then clear state (the grid's `animateItem()` animates every card, including this one, into the new order — that IS the settle animation); if null → `scope.launch { dragOffset.animateTo(Offset.Zero, spring(dampingRatio = 0.7f)) ; draggedId = null }` (spring back home, trap 4). `onDragCancel`: same as the null-target path.
+   - Dragged card visuals: `Modifier.zIndex(1f).graphicsLayer { translationX = dragOffset.value.x; translationY = dragOffset.value.y; scaleX = liftScale; scaleY = liftScale; shadowElevation = liftElevation }` where `liftScale`/`liftElevation` come from `animateFloatAsState(if (isDragged) 1.06f else 1f, spring)` and `(if (isDragged) 12.dp else 0.dp)` — the lift eases in over ~150ms rather than popping. Also `alpha = 0.9f` while dragged so the grid reads through it.
+   - Drop-target card visuals: `animateFloatAsState`-driven `scale = 0.94f` + a 2dp `tokens.textPrimary` border while it is the current `dropTargetId` — a quiet monochrome cue, per the M7 zero-chroma contract.
+   - **Edge auto-scroll (small, do include):** in `onDrag`, if the finger point is within 64.dp (in px) of the grid's top/bottom bound, `scope.launch { gridState.scrollBy(±16f) }`. If this fights the finger-point math in practice, drop it and log the deviation — it's a nicety, not the feature.
+4. **`ui/gallery/GalleryViewModel.kt`.**
+   - Replace `reorderDrawings(fromIndex, toIndex)` with `dropOnto(draggedId: String, targetId: String)`: reorder the in-memory `drawings` list (remove dragged, insert at the target's position), then `repository.updateDrawingOrder(drawings.map { it.id })` — the single disk write — then `refresh()`.
+   - **Pinned interplay (decide once, here):** dragging is allowed for every card; if an unpinned card is dropped onto a pinned slot, `refresh()` snaps pinned cards back to the front section. Pinning stays a section, not a lock. If the user dislikes the snap on-device, the fallback is having `dropOnto` no-op across the pinned boundary — decide with them, don't pre-build it.
+5. **Gate + commit:** `./gradlew test assembleDebug` green (expect existing count + new `ReorderTargetTest` + `DrawingRepositoryTest` additions); commit `m9a: gallery drag-to-reorder — float-and-drop, layout hit-testing, single-write persistence`; deviations-log entry.
+6. **On-device checklist (folds into the standing M5/M7/M8 debt pass) — the bar is "feels natural", the user's explicit complaint:**
+   - long-press a card → haptic + spring lift → drag **down one row** → target card under the fingertip highlights (with a tick) → release → one smooth animated reflow → order sticks and survives kill+relaunch;
+   - the grid must NOT shuffle while the finger is still moving (float-and-drop contract);
+   - drop in a gap/outside all cards → the card springs back to its slot, no order change;
+   - drag across columns and diagonally at all three thumbnail sizes (COMPACT/MEDIUM/LARGE — different column counts is the whole point);
+   - plain long-press (no move) still opens the focus overlay, and no overlay flash when a drag starts;
+   - one-finger scroll and two-finger pinch-resize still work; drag near the top/bottom edge auto-scrolls;
+   - pin a card, drop an unpinned card onto the pinned section → snaps back below it (expected, per step 4);
+   - new drawing and duplicate both appear at the top.
+
+**Not JVM-testable (recorded per trap #1's spirit):** the `pointerInput` glue, spring animations, and auto-scroll are Compose UI; the testable kernels (order persistence/normalization in `data/`, hit-testing in `core/ReorderTarget`) are extracted above precisely so the UI layer stays thin.
+
 ## Verification
 
 - Per milestone: `./gradlew test assembleDebug` (JDK 21 + SDK 35 already installed; only Gradle/deps download needed).

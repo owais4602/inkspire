@@ -27,7 +27,13 @@ class DrawingRepository(private val rootDir: File) {
         rootDir.mkdirs()
     }
 
-    fun listDrawings(): List<DrawingMeta> = readIndex().sortedByDescending { it.updatedAtEpochMillis }
+    fun listDrawings(): List<DrawingMeta> {
+        return readIndex().sortedWith(
+            compareByDescending<DrawingMeta> { it.isPinned }
+                .thenBy { it.orderIndex }
+                .thenByDescending { it.updatedAtEpochMillis }
+        )
+    }
 
     fun createDrawing(name: String, width: Float, height: Float, backgroundColorArgb: Int, shape: dev.stupifranc.inkspire.model.CanvasShape = dev.stupifranc.inkspire.model.CanvasShape.RECTANGLE): DrawingMeta {
         val now = System.currentTimeMillis()
@@ -48,6 +54,19 @@ class DrawingRepository(private val rootDir: File) {
 
     fun renameDrawing(id: String, newName: String) {
         updateMeta(id) { it.copy(name = newName, updatedAtEpochMillis = System.currentTimeMillis()) }
+    }
+
+    fun togglePin(id: String) {
+        updateMeta(id) { it.copy(isPinned = !it.isPinned) }
+    }
+
+    fun updateDrawingOrder(orderedIds: List<String>) {
+        val currentDrawings = readIndex().associateBy { it.id }
+        val newDrawings = orderedIds.mapIndexedNotNull { index, id ->
+            currentDrawings[id]?.copy(orderIndex = index.toLong())
+        }
+        val remainingDrawings = currentDrawings.values.filter { it.id !in orderedIds }
+        writeIndex(newDrawings + remainingDrawings)
     }
 
     fun updateCanvasSpec(

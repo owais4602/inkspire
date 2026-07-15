@@ -12,11 +12,17 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -66,13 +72,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -189,6 +198,7 @@ fun GalleryScreen(
 
     var renameTarget by remember { mutableStateOf<DrawingMeta?>(null) }
     var showCustomizeSheet by remember { mutableStateOf(false) }
+    var focusedDrawingId by remember { mutableStateOf<String?>(null) }
 
     MaterialTheme(colorScheme = galleryColorScheme(tokens)) {
         Box(
@@ -205,6 +215,9 @@ fun GalleryScreen(
 
             if (viewModel.drawings.isEmpty()) {
                 EmptyGallery(tokens = tokens, modifier = Modifier.align(Alignment.Center))
+                Box(modifier = Modifier.padding(top = insets.calculateTopPadding() + 8.dp, start = 24.dp, end = 8.dp)) {
+                    GalleryHeader(pieceCount = 0, tokens = tokens, onOpenCustomize = { showCustomizeSheet = true })
+                }
             } else {
                 LazyVerticalStaggeredGrid(
                     columns = StaggeredGridCells.Adaptive(minSize = prefs.thumbSize.minCellDp.dp),
@@ -226,24 +239,65 @@ fun GalleryScreen(
                         )
                     }
                     items(viewModel.drawings, key = { it.id }) { meta ->
-                        GalleryPiece(
-                            meta = meta,
-                            thumbnailFile = viewModel.thumbnailFile(meta.id),
-                            prefs = prefs,
-                            tokens = tokens,
-                            onClick = { onOpenDrawing(meta.id) },
-                            onRename = { renameTarget = meta },
-                            onDuplicate = { viewModel.duplicate(meta.id) },
-                            onDelete = { viewModel.delete(meta.id) },
-                        )
+                        var cumulativeDragX by remember { mutableStateOf(0f) }
+                        var cumulativeDragY by remember { mutableStateOf(0f) }
+                        
+                        Box(modifier = Modifier
+                            .animateItem()
+                            .pointerInput(meta.id) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { 
+                                        focusedDrawingId = meta.id
+                                        cumulativeDragX = 0f
+                                        cumulativeDragY = 0f
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        if (focusedDrawingId == meta.id) {
+                                            focusedDrawingId = null
+                                        }
+                                        cumulativeDragX += dragAmount.x
+                                        cumulativeDragY += dragAmount.y
+                                        
+                                        val currentIndex = viewModel.drawings.indexOfFirst { it.id == meta.id }
+                                        if (currentIndex == -1) return@detectDragGesturesAfterLongPress
+                                        
+                                        if (cumulativeDragX > 150f && currentIndex < viewModel.drawings.lastIndex) {
+                                            viewModel.reorderDrawings(currentIndex, currentIndex + 1)
+                                            cumulativeDragX = 0f
+                                        } else if (cumulativeDragX < -150f && currentIndex > 0) {
+                                            viewModel.reorderDrawings(currentIndex, currentIndex - 1)
+                                            cumulativeDragX = 0f
+                                        }
+                                        
+                                        if (cumulativeDragY > 200f && currentIndex < viewModel.drawings.lastIndex - 1) {
+                                            viewModel.reorderDrawings(currentIndex, minOf(currentIndex + 2, viewModel.drawings.lastIndex))
+                                            cumulativeDragY = 0f
+                                        } else if (cumulativeDragY < -200f && currentIndex > 1) {
+                                            viewModel.reorderDrawings(currentIndex, maxOf(currentIndex - 2, 0))
+                                            cumulativeDragY = 0f
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        cumulativeDragX = 0f
+                                        cumulativeDragY = 0f
+                                    },
+                                    onDragCancel = {
+                                        cumulativeDragX = 0f
+                                        cumulativeDragY = 0f
+                                    }
+                                )
+                            }
+                        ) {
+                            GalleryPiece(
+                                meta = meta,
+                                thumbnailPath = viewModel.thumbnailFile(meta.id)?.path,
+                                prefs = prefs,
+                                tokens = tokens,
+                                onClick = { onOpenDrawing(meta.id) }
+                            )
+                        }
                     }
-                }
-            }
-
-            // Empty gallery still shows the wordmark so the first launch isn't a bare wall.
-            if (viewModel.drawings.isEmpty()) {
-                Box(modifier = Modifier.padding(top = insets.calculateTopPadding() + 8.dp, start = 24.dp, end = 8.dp)) {
-                    GalleryHeader(pieceCount = 0, tokens = tokens, onOpenCustomize = { showCustomizeSheet = true })
                 }
             }
 
@@ -254,6 +308,47 @@ fun GalleryScreen(
                     .align(Alignment.BottomEnd)
                     .padding(end = 24.dp, bottom = insets.calculateBottomPadding() + 24.dp),
             )
+        }
+
+        focusedDrawingId?.let { focusId ->
+            val meta = viewModel.drawings.find { it.id == focusId }
+            if (meta != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .clickable { focusedDrawingId = null },
+                    contentAlignment = Alignment.Center
+                ) {
+                     Box(modifier = Modifier
+                         .fillMaxWidth(0.8f)
+                         .aspectRatio(if(meta.width > 0f && meta.height > 0f) meta.width/meta.height else FALLBACK_CARD_RATIO)
+                     ) {
+                         GalleryPiece(
+                            meta = meta,
+                            thumbnailPath = viewModel.thumbnailFile(meta.id)?.path,
+                            prefs = prefs,
+                            tokens = tokens,
+                            onClick = { onOpenDrawing(meta.id) }
+                        )
+                     }
+                     
+                     Row(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)) {
+                         TextButton(onClick = { onOpenDrawing(meta.id); focusedDrawingId = null }) { Text("Open", color = Color.White) }
+                         TextButton(
+                             onClick = {
+                                 viewModel.togglePin(meta.id)
+                                 focusedDrawingId = null
+                             }
+                         ) {
+                             Text(if (meta.isPinned) "Unpin" else "Pin", color = Color.White)
+                         }
+                         TextButton(onClick = { renameTarget = meta; focusedDrawingId = null }) { Text("Rename", color = Color.White) }
+                         TextButton(onClick = { viewModel.duplicate(meta.id); focusedDrawingId = null }) { Text("Duplicate", color = Color.White) }
+                         TextButton(onClick = { viewModel.delete(meta.id); focusedDrawingId = null }) { Text("Delete", color = DeleteRed) }
+                     }
+                }
+            }
         }
 
         renameTarget?.let { meta ->
@@ -374,19 +469,14 @@ private fun GalleryHeader(pieceCount: Int, tokens: GalleryTokens, onOpenCustomiz
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun GalleryPiece(
     meta: DrawingMeta,
-    thumbnailFile: File?,
+    thumbnailPath: String?,
     prefs: AppPrefs,
     tokens: GalleryTokens,
     onClick: () -> Unit,
-    onRename: () -> Unit,
-    onDuplicate: () -> Unit,
-    onDelete: () -> Unit,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
     val ratio = if (meta.width > 0f && meta.height > 0f) {
         meta.width / meta.height
     } else {
@@ -409,42 +499,33 @@ private fun GalleryPiece(
                 .clip(cornerShape)
                 .background(if (meta.backgroundColorArgb == 0) tokens.surface else Color(meta.backgroundColorArgb))
                 .then(if (prefs.borderEnabled) Modifier.border(1.dp, tokens.hairline, cornerShape) else Modifier)
-                .combinedClickable(onClick = onClick, onLongClick = { menuExpanded = true }),
+                .clickable(onClick = onClick),
         ) {
-            val bitmap = remember(thumbnailFile?.lastModified()) {
-                thumbnailFile?.takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path) }
+            val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, key1 = thumbnailPath, key2 = meta.updatedAtEpochMillis) {
+                if (thumbnailPath != null) {
+                    value = withContext(Dispatchers.IO) {
+                        val file = File(thumbnailPath)
+                        if (file.exists()) {
+                            BitmapFactory.decodeFile(file.path)
+                        } else null
+                    }
+                } else {
+                    value = null
+                }
             }
             if (bitmap != null) {
                 Image(
-                    painter = BitmapPainter(bitmap.asImageBitmap()),
+                    painter = BitmapPainter(bitmap!!.asImageBitmap()),
                     contentDescription = meta.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
         }
-        // Long-press menu anchor and grid breathing room
-        Box(modifier = Modifier.fillMaxWidth().height(8.dp)) {
-            PieceMenu(menuExpanded, tokens, { menuExpanded = false }, onRename, onDuplicate, onDelete)
-        }
     }
 }
 
-@Composable
-private fun PieceMenu(
-    expanded: Boolean,
-    tokens: GalleryTokens,
-    onDismiss: () -> Unit,
-    onRename: () -> Unit,
-    onDuplicate: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(text = { Text("Rename", color = tokens.textPrimary) }, onClick = { onDismiss(); onRename() })
-        DropdownMenuItem(text = { Text("Duplicate", color = tokens.textPrimary) }, onClick = { onDismiss(); onDuplicate() })
-        DropdownMenuItem(text = { Text("Delete", color = DeleteRed) }, onClick = { onDismiss(); onDelete() })
-    }
-}
+
 
 private fun relativeEditTime(updatedAtEpochMillis: Long): String {
     val now = System.currentTimeMillis()
