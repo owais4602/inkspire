@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,13 +37,22 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -52,11 +63,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -70,49 +83,85 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.stupifranc.inkspire.core.PinchStep
+import dev.stupifranc.inkspire.core.PinchSteps
+import dev.stupifranc.inkspire.model.CornerStyle
 import dev.stupifranc.inkspire.model.DrawingMeta
+import dev.stupifranc.inkspire.model.GalleryPrefs
+import dev.stupifranc.inkspire.model.ThumbSize
+import dev.stupifranc.inkspire.model.WallTone
 import dev.stupifranc.inkspire.ui.components.icons.MoreIcon
 import dev.stupifranc.inkspire.ui.components.icons.PlusIcon
+import dev.stupifranc.inkspire.ui.components.icons.TuneIcon
 import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
 
-// The gallery is a dark museum wall: near-black so each colorful piece glows against it,
-// with one prismatic gradient accent as the app's signature. The editor stays light —
-// this palette is scoped to the gallery alone via a local MaterialTheme.
-private val WallColor = Color(0xFF101014)
-private val WallSurface = Color(0xFF1C1C22)
-private val InkWhite = Color(0xFFF2F0EB)
-private val InkDim = Color(0xFF908E96)
-private val Hairline = Color(0x1FFFFFFF)
-private val DeleteRed = Color(0xFFFF7A70)
-
-/** One loop of the kaleidoscope: violet → teal → amber → rose, closing back on violet. */
-private val PrismColors = listOf(
-    Color(0xFF9C6BFF),
-    Color(0xFF2BD9C8),
-    Color(0xFFFFC44D),
-    Color(0xFFFF6E9A),
-    Color(0xFF9C6BFF),
+// Minimal, premium, zero-chroma gallery: strict monochrome tonal sets, no gradients. The editor stays
+// light; this palette is scoped to the gallery alone via a local MaterialTheme. Wall tone (dark/light)
+// is user-selectable via the customization sheet — dark is the default.
+private data class GalleryTokens(
+    val wall: Color,
+    val surface: Color,
+    val textPrimary: Color,
+    val textDim: Color,
+    val hairline: Color,
+    val isDark: Boolean,
 )
 
-private val GalleryColorScheme = darkColorScheme(
-    background = WallColor,
-    surface = WallSurface,
-    surfaceContainer = WallSurface,
-    onSurface = InkWhite,
-    onSurfaceVariant = InkDim,
-    primary = Color(0xFFB9A3FF),
-    outline = Hairline,
+private val DarkGalleryTokens = GalleryTokens(
+    wall = Color(0xFF0D0D0F),
+    surface = Color(0xFF17171A),
+    textPrimary = Color(0xFFF5F4F1),
+    textDim = Color(0xFF8A8A90),
+    hairline = Color(0x24FFFFFF),
+    isDark = true,
 )
 
-private val PieceCornerShape = RoundedCornerShape(14.dp)
+private val LightGalleryTokens = GalleryTokens(
+    wall = Color(0xFFFAFAF8),
+    surface = Color(0xFFFFFFFF),
+    textPrimary = Color(0xFF161616),
+    textDim = Color(0xFF7A7A7E),
+    hairline = Color(0x1F000000),
+    isDark = false,
+)
+
+private fun tokensFor(wall: WallTone): GalleryTokens = if (wall == WallTone.DARK) DarkGalleryTokens else LightGalleryTokens
+
+/** The only non-grayscale pixel allowed on this screen — the destructive-action convention, desaturated. */
+private val DeleteRed = Color(0xFFE05C52)
+
+/** Builds a fully explicit color scheme from [tokens] so no Material3 default role (e.g. a purple primary) leaks chroma. */
+private fun galleryColorScheme(tokens: GalleryTokens): ColorScheme {
+    val base = if (tokens.isDark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        background = tokens.wall,
+        onBackground = tokens.textPrimary,
+        surface = tokens.surface,
+        onSurface = tokens.textPrimary,
+        surfaceVariant = tokens.surface,
+        onSurfaceVariant = tokens.textDim,
+        surfaceContainer = tokens.surface,
+        primary = tokens.textPrimary,
+        onPrimary = tokens.wall,
+        secondary = tokens.textDim,
+        onSecondary = tokens.wall,
+        secondaryContainer = tokens.surface,
+        onSecondaryContainer = tokens.textPrimary,
+        outline = tokens.hairline,
+        outlineVariant = tokens.hairline,
+        error = DeleteRed,
+        onError = tokens.wall,
+    )
+}
 
 /** Ratio guard so an extreme canvas (e.g. a long banner) can't produce an absurd sliver of a card. */
 private const val MIN_CARD_RATIO = 0.58f
 private const val MAX_CARD_RATIO = 1.8f
 private const val FALLBACK_CARD_RATIO = 0.8f
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GalleryScreen(
     onOpenDrawing: (String) -> Unit,
@@ -129,19 +178,31 @@ fun GalleryScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LightSystemBarIcons()
+    val prefs = viewModel.prefs
+    val tokens = tokensFor(prefs.wall)
+    SystemBarIcons(lightWall = !tokens.isDark)
 
     var renameTarget by remember { mutableStateOf<DrawingMeta?>(null) }
+    var showCustomizeSheet by remember { mutableStateOf(false) }
 
-    MaterialTheme(colorScheme = GalleryColorScheme) {
-        Box(modifier = Modifier.fillMaxSize().background(WallColor)) {
+    MaterialTheme(colorScheme = galleryColorScheme(tokens)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(tokens.wall)
+                .pointerInput(Unit) {
+                    detectPinchToStepThumbnails { step ->
+                        viewModel.updatePrefs(viewModel.prefs.copy(thumbSize = viewModel.prefs.thumbSize.stepped(step)))
+                    }
+                },
+        ) {
             val insets = WindowInsets.safeDrawing.asPaddingValues()
 
             if (viewModel.drawings.isEmpty()) {
-                EmptyGallery(modifier = Modifier.align(Alignment.Center))
+                EmptyGallery(tokens = tokens, modifier = Modifier.align(Alignment.Center))
             } else {
                 LazyVerticalStaggeredGrid(
-                    columns = StaggeredGridCells.Adaptive(minSize = 156.dp),
+                    columns = StaggeredGridCells.Adaptive(minSize = prefs.thumbSize.minCellDp.dp),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
                         start = 20.dp,
@@ -153,12 +214,18 @@ fun GalleryScreen(
                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
                     item(span = StaggeredGridItemSpan.FullLine) {
-                        GalleryHeader(pieceCount = viewModel.drawings.size)
+                        GalleryHeader(
+                            pieceCount = viewModel.drawings.size,
+                            tokens = tokens,
+                            onOpenCustomize = { showCustomizeSheet = true },
+                        )
                     }
                     items(viewModel.drawings, key = { it.id }) { meta ->
                         GalleryPiece(
                             meta = meta,
                             thumbnailFile = viewModel.thumbnailFile(meta.id),
+                            prefs = prefs,
+                            tokens = tokens,
                             onClick = { onOpenDrawing(meta.id) },
                             onRename = { renameTarget = meta },
                             onDuplicate = { viewModel.duplicate(meta.id) },
@@ -170,12 +237,13 @@ fun GalleryScreen(
 
             // Empty gallery still shows the wordmark so the first launch isn't a bare wall.
             if (viewModel.drawings.isEmpty()) {
-                Box(modifier = Modifier.padding(top = insets.calculateTopPadding() + 8.dp, start = 24.dp)) {
-                    GalleryHeader(pieceCount = 0)
+                Box(modifier = Modifier.padding(top = insets.calculateTopPadding() + 8.dp, start = 24.dp, end = 8.dp)) {
+                    GalleryHeader(pieceCount = 0, tokens = tokens, onOpenCustomize = { showCustomizeSheet = true })
                 }
             }
 
             NewPieceButton(
+                tokens = tokens,
                 onClick = { onOpenDrawing(viewModel.createDrawing().id) },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -200,14 +268,64 @@ fun GalleryScreen(
                 },
             )
         }
+
+        if (showCustomizeSheet) {
+            GalleryCustomizationSheet(
+                prefs = prefs,
+                tokens = tokens,
+                onPrefsChange = viewModel::updatePrefs,
+                onDismiss = { showCustomizeSheet = false },
+            )
+        }
     }
 }
 
-/** The wall is dark regardless of system theme, so status/nav icons must go light while this screen shows. */
+private fun ThumbSize.stepped(step: PinchStep): ThumbSize {
+    val values = ThumbSize.entries
+    val delta = if (step == PinchStep.StepUp) 1 else -1
+    val index = (values.indexOf(this) + delta).coerceIn(0, values.lastIndex)
+    return values[index]
+}
+
+/**
+ * Two-finger pinch drives [PinchSteps]; deliberately only inspects/consumes events once 2+ pointers are
+ * down (checked on [PointerEventPass.Initial], ahead of the grid's own scroll handling in the Main pass)
+ * so ordinary one-finger vertical scroll is never touched — the known trap of layering a transform
+ * gesture over a `LazyVerticalStaggeredGrid`.
+ */
+private suspend fun PointerInputScope.detectPinchToStepThumbnails(onStep: (PinchStep) -> Unit) {
+    val pinchSteps = PinchSteps()
+    awaitEachGesture {
+        var pinching = false
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val pressedCount = event.changes.count { it.pressed }
+            when {
+                pressedCount >= 2 -> {
+                    if (!pinching) {
+                        pinching = true
+                        pinchSteps.reset()
+                    }
+                    val zoom = event.calculateZoom()
+                    if (zoom != 1f) {
+                        pinchSteps.onScaleFactor(zoom)?.let(onStep)
+                    }
+                    event.changes.forEach { it.consume() }
+                }
+                pinching -> {
+                    pinching = false
+                    pinchSteps.reset()
+                }
+            }
+        } while (event.changes.any { it.pressed })
+    }
+}
+
+/** The wall is a fixed tone regardless of system theme, so status/nav icons must be set explicitly while this screen shows. */
 @Composable
-private fun LightSystemBarIcons() {
+private fun SystemBarIcons(lightWall: Boolean) {
     val view = LocalView.current
-    DisposableEffect(view) {
+    DisposableEffect(view, lightWall) {
         val window = view.context.findActivity()?.window
         if (window == null) {
             onDispose { }
@@ -215,8 +333,8 @@ private fun LightSystemBarIcons() {
             val controller = WindowCompat.getInsetsController(window, view)
             val previousStatus = controller.isAppearanceLightStatusBars
             val previousNav = controller.isAppearanceLightNavigationBars
-            controller.isAppearanceLightStatusBars = false
-            controller.isAppearanceLightNavigationBars = false
+            controller.isAppearanceLightStatusBars = lightWall
+            controller.isAppearanceLightNavigationBars = lightWall
             onDispose {
                 controller.isAppearanceLightStatusBars = previousStatus
                 controller.isAppearanceLightNavigationBars = previousNav
@@ -232,31 +350,38 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 }
 
 @Composable
-private fun GalleryHeader(pieceCount: Int) {
-    Column(modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 12.dp)) {
-        Text(
-            "Inkspire",
-            fontFamily = FontFamily.Serif,
-            fontSize = 38.sp,
-            color = InkWhite,
-            letterSpacing = 0.5.sp,
-        )
-        Spacer(modifier = Modifier.height(10.dp))
+private fun GalleryHeader(pieceCount: Int, tokens: GalleryTokens, onOpenCustomize: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 12.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
+        Column {
+            Text(
+                "Inkspire",
+                fontFamily = FontFamily.Serif,
+                fontSize = 38.sp,
+                color = tokens.textPrimary,
+                letterSpacing = 0.5.sp,
+            )
+            if (pieceCount > 0) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    if (pieceCount == 1) "1 piece" else "$pieceCount pieces",
+                    fontSize = 13.sp,
+                    color = tokens.textDim,
+                    letterSpacing = 0.2.sp,
+                )
+            }
+        }
         Box(
             modifier = Modifier
-                .width(64.dp)
-                .height(2.dp)
-                .clip(RoundedCornerShape(1.dp))
-                .background(Brush.horizontalGradient(PrismColors)),
-        )
-        if (pieceCount > 0) {
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                if (pieceCount == 1) "1 piece" else "$pieceCount pieces",
-                fontSize = 13.sp,
-                color = InkDim,
-                letterSpacing = 0.2.sp,
-            )
+                .padding(top = 4.dp)
+                .clip(RoundedCornerShape(50))
+                .clickable(onClick = onOpenCustomize)
+                .padding(10.dp),
+        ) {
+            TuneIcon(tint = tokens.textDim)
         }
     }
 }
@@ -266,6 +391,8 @@ private fun GalleryHeader(pieceCount: Int) {
 private fun GalleryPiece(
     meta: DrawingMeta,
     thumbnailFile: File?,
+    prefs: GalleryPrefs,
+    tokens: GalleryTokens,
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDuplicate: () -> Unit,
@@ -277,16 +404,17 @@ private fun GalleryPiece(
     } else {
         FALLBACK_CARD_RATIO
     }
+    val cornerShape = RoundedCornerShape(prefs.cornerStyle.radiusDp.dp)
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // The artwork itself is the card — framed by a hairline, captioned beneath like a museum label.
+        // The artwork itself is the card — framed by an optional hairline, captioned beneath like a museum label.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(ratio)
-                .clip(PieceCornerShape)
+                .clip(cornerShape)
                 .background(Color(meta.backgroundColorArgb))
-                .border(1.dp, Hairline, PieceCornerShape)
+                .then(if (prefs.borderEnabled) Modifier.border(1.dp, tokens.hairline, cornerShape) else Modifier)
                 .combinedClickable(onClick = onClick, onLongClick = { menuExpanded = true }),
         ) {
             val bitmap = remember(thumbnailFile?.lastModified()) {
@@ -301,40 +429,57 @@ private fun GalleryPiece(
                 )
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    meta.name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = InkWhite,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    relativeEditTime(meta.updatedAtEpochMillis),
-                    fontSize = 11.sp,
-                    color = InkDim,
-                )
-            }
-            Box {
-                Box(modifier = Modifier.clickable { menuExpanded = true }.padding(6.dp)) {
-                    MoreIcon(tint = InkDim)
-                }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    DropdownMenuItem(text = { Text("Rename") }, onClick = { menuExpanded = false; onRename() })
-                    DropdownMenuItem(text = { Text("Duplicate") }, onClick = { menuExpanded = false; onDuplicate() })
-                    DropdownMenuItem(
-                        text = { Text("Delete", color = DeleteRed) },
-                        onClick = { menuExpanded = false; onDelete() },
+        if (prefs.showCaptions) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        meta.name,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = tokens.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        relativeEditTime(meta.updatedAtEpochMillis),
+                        fontSize = 11.sp,
+                        color = tokens.textDim,
                     )
                 }
+                Box {
+                    Box(modifier = Modifier.clickable { menuExpanded = true }.padding(6.dp)) {
+                        MoreIcon(tint = tokens.textDim)
+                    }
+                    PieceMenu(menuExpanded, tokens, { menuExpanded = false }, onRename, onDuplicate, onDelete)
+                }
+            }
+        } else {
+            // Captions off: no title/timestamp/menu-icon row, but the long-press menu (armed above) still
+            // needs an anchor, and the grid still wants breathing room where the caption row used to be.
+            Box(modifier = Modifier.fillMaxWidth().height(8.dp)) {
+                PieceMenu(menuExpanded, tokens, { menuExpanded = false }, onRename, onDuplicate, onDelete)
             }
         }
+    }
+}
+
+@Composable
+private fun PieceMenu(
+    expanded: Boolean,
+    tokens: GalleryTokens,
+    onDismiss: () -> Unit,
+    onRename: () -> Unit,
+    onDuplicate: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(text = { Text("Rename", color = tokens.textPrimary) }, onClick = { onDismiss(); onRename() })
+        DropdownMenuItem(text = { Text("Duplicate", color = tokens.textPrimary) }, onClick = { onDismiss(); onDuplicate() })
+        DropdownMenuItem(text = { Text("Delete", color = DeleteRed) }, onClick = { onDismiss(); onDelete() })
     }
 }
 
@@ -348,45 +493,45 @@ private fun relativeEditTime(updatedAtEpochMillis: Long): String {
 }
 
 @Composable
-private fun NewPieceButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun NewPieceButton(tokens: GalleryTokens, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(WallSurface)
-            .border(1.dp, Brush.linearGradient(PrismColors), RoundedCornerShape(50))
+            .background(tokens.surface)
+            .border(1.dp, tokens.hairline, RoundedCornerShape(50))
             .clickable(onClick = onClick)
             .padding(start = 18.dp, end = 22.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlusIcon(tint = InkWhite)
+        PlusIcon(tint = tokens.textPrimary)
         Spacer(modifier = Modifier.width(6.dp))
-        Text("New", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = InkWhite, letterSpacing = 0.3.sp)
+        Text("New", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = tokens.textPrimary, letterSpacing = 0.3.sp)
     }
 }
 
 @Composable
-private fun EmptyGallery(modifier: Modifier = Modifier) {
+private fun EmptyGallery(tokens: GalleryTokens, modifier: Modifier = Modifier) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        KaleidoscopeGlyph()
+        KaleidoscopeGlyph(tokens)
         Spacer(modifier = Modifier.height(24.dp))
         Text(
             "Your gallery awaits",
             fontFamily = FontFamily.Serif,
             fontSize = 24.sp,
-            color = InkWhite,
+            color = tokens.textPrimary,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "Tap New to craft your first piece",
             fontSize = 14.sp,
-            color = InkDim,
+            color = tokens.textDim,
         )
     }
 }
 
-/** Six prism-colored spokes — a quiet nod to the kaleidoscope mode that gives the app its soul. */
+/** Six spokes — a quiet nod to the kaleidoscope mode that gives the app its soul, kept strictly monochrome. */
 @Composable
-private fun KaleidoscopeGlyph() {
+private fun KaleidoscopeGlyph(tokens: GalleryTokens) {
     Canvas(modifier = Modifier.size(56.dp)) {
         val center = Offset(size.width / 2f, size.height / 2f)
         val radius = size.minDimension * 0.44f
@@ -398,13 +543,151 @@ private fun KaleidoscopeGlyph() {
                 center.y + radius * sin(angle).toFloat(),
             )
             drawLine(
-                color = PrismColors[i % (PrismColors.size - 1)].copy(alpha = 0.85f),
+                color = tokens.textDim.copy(alpha = 0.6f),
                 start = center,
                 end = end,
                 strokeWidth = strokeWidth,
                 cap = StrokeCap.Round,
             )
         }
-        drawCircle(InkWhite, radius = strokeWidth, center = center)
+        drawCircle(tokens.textPrimary, radius = strokeWidth, center = center)
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GalleryCustomizationSheet(
+    prefs: GalleryPrefs,
+    tokens: GalleryTokens,
+    onPrefsChange: (GalleryPrefs) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = tokens.surface,
+        contentColor = tokens.textPrimary,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
+            Text(
+                "Customize gallery",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium,
+                color = tokens.textPrimary,
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            SheetSectionLabel("Thumbnail size", tokens)
+            SegmentedRow(
+                options = ThumbSize.entries,
+                selected = prefs.thumbSize,
+                tokens = tokens,
+                label = ::thumbSizeLabel,
+                onSelect = { onPrefsChange(prefs.copy(thumbSize = it)) },
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            SheetSwitchRow("Card border", prefs.borderEnabled, tokens) {
+                onPrefsChange(prefs.copy(borderEnabled = it))
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+
+            SheetSectionLabel("Corners", tokens)
+            SegmentedRow(
+                options = CornerStyle.entries,
+                selected = prefs.cornerStyle,
+                tokens = tokens,
+                label = ::cornerStyleLabel,
+                onSelect = { onPrefsChange(prefs.copy(cornerStyle = it)) },
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            SheetSwitchRow("Captions", prefs.showCaptions, tokens) {
+                onPrefsChange(prefs.copy(showCaptions = it))
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+
+            SheetSectionLabel("Wall", tokens)
+            SegmentedRow(
+                options = WallTone.entries,
+                selected = prefs.wall,
+                tokens = tokens,
+                label = ::wallToneLabel,
+                onSelect = { onPrefsChange(prefs.copy(wall = it)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SheetSectionLabel(text: String, tokens: GalleryTokens) {
+    Text(text, fontSize = 12.sp, color = tokens.textDim, letterSpacing = 0.3.sp)
+    Spacer(modifier = Modifier.height(8.dp))
+}
+
+@Composable
+private fun SheetSwitchRow(label: String, checked: Boolean, tokens: GalleryTokens, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, fontSize = 14.sp, color = tokens.textPrimary)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = tokens.wall,
+                checkedTrackColor = tokens.textPrimary,
+                checkedBorderColor = tokens.textPrimary,
+                uncheckedThumbColor = tokens.textDim,
+                uncheckedTrackColor = Color.Transparent,
+                uncheckedBorderColor = tokens.hairline,
+            ),
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun <T> SegmentedRow(
+    options: List<T>,
+    selected: T,
+    tokens: GalleryTokens,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        options.forEachIndexed { index, option ->
+            SegmentedButton(
+                selected = option == selected,
+                onClick = { onSelect(option) },
+                shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                colors = SegmentedButtonDefaults.colors(
+                    activeContainerColor = tokens.textPrimary,
+                    activeContentColor = tokens.wall,
+                    activeBorderColor = tokens.hairline,
+                    inactiveContainerColor = Color.Transparent,
+                    inactiveContentColor = tokens.textDim,
+                    inactiveBorderColor = tokens.hairline,
+                ),
+                label = { Text(label(option)) },
+            )
+        }
+    }
+}
+
+private fun thumbSizeLabel(size: ThumbSize) = when (size) {
+    ThumbSize.COMPACT -> "Compact"
+    ThumbSize.MEDIUM -> "Medium"
+    ThumbSize.LARGE -> "Large"
+}
+
+private fun cornerStyleLabel(style: CornerStyle) = when (style) {
+    CornerStyle.SQUARE -> "Square"
+    CornerStyle.ROUNDED -> "Rounded"
+}
+
+private fun wallToneLabel(tone: WallTone) = when (tone) {
+    WallTone.DARK -> "Dark"
+    WallTone.LIGHT -> "Light"
 }

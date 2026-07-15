@@ -184,3 +184,19 @@ fun MoreIcon(tint: Color, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/** Three horizontal sliders with knobs at staggered positions — the classic "tune"/settings glyph. */
+@Composable
+fun TuneIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val knobRadius = size.minDimension * 0.07f
+        val rows = listOf(0.28f to 0.62f, 0.5f to 0.38f, 0.72f to 0.5f)
+        rows.forEach { (fy, knobFx) ->
+            val y = size.height * fy
+            drawLine(tint, Offset(w * 0.18f, y), Offset(w * 0.82f, y), stroke.width, stroke.cap)
+            drawCircle(tint, radius = knobRadius, center = Offset(w * knobFx, y))
+        }
+    }
+}
