@@ -120,6 +120,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.detectTapGestures
 import kotlinx.coroutines.launch
 import dev.stupifranc.inkspire.core.ItemBox
 import dev.stupifranc.inkspire.core.reorderTarget
@@ -293,6 +294,11 @@ fun GalleryScreen(
                                 }
                             }
                             .pointerInput(meta.id) {
+                                detectTapGestures(
+                                    onTap = { onOpenDrawing(meta.id) }
+                                )
+                            }
+                            .pointerInput(meta.id, "drag") {
                                 var dragStart = Offset.Zero
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = { startPosition -> 
@@ -377,7 +383,6 @@ fun GalleryScreen(
                                 thumbnailPath = viewModel.thumbnailFile(meta.id)?.path,
                                 prefs = prefs,
                                 tokens = tokens,
-                                onClick = { onOpenDrawing(meta.id) }
                             )
                         }
                     }
@@ -406,13 +411,13 @@ fun GalleryScreen(
                      Box(modifier = Modifier
                          .fillMaxWidth(0.8f)
                          .aspectRatio(if(meta.width > 0f && meta.height > 0f) meta.width/meta.height else FALLBACK_CARD_RATIO)
+                         .clickable { onOpenDrawing(meta.id) }
                      ) {
                          GalleryPiece(
                             meta = meta,
                             thumbnailPath = viewModel.thumbnailFile(meta.id)?.path,
                             prefs = prefs,
                             tokens = tokens,
-                            onClick = { onOpenDrawing(meta.id) }
                         )
                      }
                      
@@ -558,7 +563,6 @@ private fun GalleryPiece(
     thumbnailPath: String?,
     prefs: AppPrefs,
     tokens: GalleryTokens,
-    onClick: () -> Unit,
 ) {
     val ratio = if (meta.width > 0f && meta.height > 0f) {
         meta.width / meta.height
@@ -581,8 +585,7 @@ private fun GalleryPiece(
                 .aspectRatio(ratio)
                 .clip(cornerShape)
                 .background(if (meta.backgroundColorArgb == 0) tokens.surface else Color(meta.backgroundColorArgb))
-                .then(if (prefs.borderEnabled) Modifier.border(1.dp, tokens.hairline, cornerShape) else Modifier)
-                .clickable(onClick = onClick),
+                .then(if (prefs.borderEnabled) Modifier.border(1.dp, tokens.hairline, cornerShape) else Modifier),
         ) {
             val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, key1 = thumbnailPath, key2 = meta.updatedAtEpochMillis) {
                 if (thumbnailPath != null) {
