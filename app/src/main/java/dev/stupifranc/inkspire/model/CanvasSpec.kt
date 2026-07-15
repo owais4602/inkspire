@@ -7,6 +7,8 @@ data class CanvasSpec(
     val width: Float,
     val height: Float,
     val backgroundColorArgb: Int,
+    val paperStyle: PaperStyle = PaperStyle.PLAIN,
+    val paperSpacing: Float = DEFAULT_PAPER_SPACING,
 )
 
 /** Whether [point] (document space) falls within the page — drawing/erasing outside it should be a no-op. */

@@ -12,8 +12,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.stupifranc.inkspire.core.BoundingBox
+import dev.stupifranc.inkspire.core.CanvasEdge
 import dev.stupifranc.inkspire.core.ContentBounds
 import dev.stupifranc.inkspire.core.EntryCollection
+import dev.stupifranc.inkspire.core.grow
 import dev.stupifranc.inkspire.core.Point
 import dev.stupifranc.inkspire.core.ResizeAnchor
 import dev.stupifranc.inkspire.core.SymmetryConfig
@@ -28,6 +30,7 @@ import dev.stupifranc.inkspire.ink.translatedBy
 import dev.stupifranc.inkspire.model.BrushFamilyChoice
 import dev.stupifranc.inkspire.model.BrushSpec
 import dev.stupifranc.inkspire.model.CanvasSpec
+import dev.stupifranc.inkspire.model.PaperStyle
 import dev.stupifranc.inkspire.model.StrokeEntry
 import dev.stupifranc.inkspire.model.Tool
 import java.io.File
@@ -42,6 +45,7 @@ private val SYMMETRY_SECTOR_RANGE = 1..12
 private const val AUTOSAVE_DEBOUNCE_MILLIS = 2000L
 private const val CONTENT_FIT_PADDING_PX = 80f
 private const val PAN_MARGIN_FRACTION = 1f / 3f
+private const val EDGE_GROW_FRACTION = 0.5f
 
 private val DEFAULT_SIZES = mapOf(
     BrushFamilyChoice.PRESSURE_PEN to 8f,
@@ -105,7 +109,7 @@ class EditorViewModel(application: Application, private val drawingId: String) :
     private fun loadInitialCanvasSpec(): CanvasSpec {
         val meta = repository.listDrawings().find { it.id == drawingId }
             ?: return CanvasSpec(width = 0f, height = 0f, backgroundColorArgb = Color.WHITE)
-        return CanvasSpec(width = meta.width, height = meta.height, backgroundColorArgb = meta.backgroundColorArgb)
+        return CanvasSpec(width = meta.width, height = meta.height, backgroundColorArgb = meta.backgroundColorArgb, paperStyle = meta.paperStyle, paperSpacing = meta.paperSpacing)
     }
 
     val symmetryConfig: SymmetryConfig
@@ -203,6 +207,26 @@ class EditorViewModel(application: Application, private val drawingId: String) :
         scheduleAutosave()
     }
 
+    /**
+     * Explicit "extend canvas" action: grows one edge by a fixed chunk (half a screen of world
+     * units), pinning the opposite edge. Counter-pans so existing content stays visually fixed —
+     * the new space appears beyond the grown edge, reachable by panning toward it.
+     */
+    fun growEdge(edge: CanvasEdge) {
+        val chunk = when (edge) {
+            CanvasEdge.LEFT, CanvasEdge.RIGHT -> containerWidth * EDGE_GROW_FRACTION
+            CanvasEdge.TOP, CanvasEdge.BOTTOM -> containerHeight * EDGE_GROW_FRACTION
+        }
+        if (chunk <= 0f) return
+        val (newWidth, newHeight, anchor) = edge.grow(canvasSpec.width, canvasSpec.height, chunk)
+        val offset = ResizeAnchor.offset(canvasSpec.width, canvasSpec.height, newWidth, newHeight, anchor)
+        applyContentTranslation(offset.x, offset.y)
+        canvasSpec = canvasSpec.copy(width = newWidth, height = newHeight)
+        viewport = viewport.pannedBy(-offset.x * viewport.scale, -offset.y * viewport.scale)
+            .clampedTo(newWidth, newHeight, containerWidth, containerHeight, panMargin())
+        scheduleAutosave()
+    }
+
     /** Resizes the page to the minimal bounds covering all content (never smaller than the existing floor), translating strokes to match. No-op if there's no content. */
     fun fitCanvasToContent() {
         val result = ContentBounds.compute(collection.entries.mapNotNull { it.boundingBox() }, CONTENT_FIT_PADDING_PX) ?: return
@@ -223,6 +247,16 @@ class EditorViewModel(application: Application, private val drawingId: String) :
     /** The page fill is always opaque — a translucent page over the workspace gray would read as a rendering bug. */
     fun setCanvasBackground(colorArgb: Int) {
         canvasSpec = canvasSpec.copy(backgroundColorArgb = colorArgb or (0xFF shl 24))
+        scheduleAutosave()
+    }
+
+    fun setPaperStyle(style: PaperStyle) {
+        canvasSpec = canvasSpec.copy(paperStyle = style)
+        scheduleAutosave()
+    }
+
+    fun setPaperSpacing(spacing: Float) {
+        canvasSpec = canvasSpec.copy(paperSpacing = spacing.coerceAtLeast(16f))
         scheduleAutosave()
     }
 
@@ -295,7 +329,7 @@ class EditorViewModel(application: Application, private val drawingId: String) :
 
     private fun performSave(entries: List<StrokeEntry>, spec: CanvasSpec) {
         repository.saveStrokes(drawingId, StrokeStore.encode(entries))
-        repository.updateCanvasSpec(drawingId, spec.width, spec.height, spec.backgroundColorArgb)
+        repository.updateCanvasSpec(drawingId, spec.width, spec.height, spec.backgroundColorArgb, spec.paperStyle, spec.paperSpacing)
         if (spec.width > 0f && spec.height > 0f) {
             val thumbnail = CanvasExporter.renderThumbnail(spec, entries)
             repository.saveThumbnail(drawingId, CanvasExporter.toPngBytes(thumbnail))

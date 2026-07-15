@@ -223,3 +223,178 @@ fun TuneIcon(tint: Color, modifier: Modifier = Modifier) {
         }
     }
 }
+
+@Composable
+fun ArrowUpIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        drawLine(tint, Offset(w / 2f, h * 0.8f), Offset(w / 2f, h * 0.2f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w / 2f, h * 0.2f), Offset(w * 0.25f, h * 0.45f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w / 2f, h * 0.2f), Offset(w * 0.75f, h * 0.45f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun ArrowDownIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        drawLine(tint, Offset(w / 2f, h * 0.2f), Offset(w / 2f, h * 0.8f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w / 2f, h * 0.8f), Offset(w * 0.25f, h * 0.55f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w / 2f, h * 0.8f), Offset(w * 0.75f, h * 0.55f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun ArrowLeftIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        drawLine(tint, Offset(w * 0.8f, h / 2f), Offset(w * 0.2f, h / 2f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.2f, h / 2f), Offset(w * 0.45f, h * 0.25f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.2f, h / 2f), Offset(w * 0.45f, h * 0.75f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun ArrowRightIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        drawLine(tint, Offset(w * 0.2f, h / 2f), Offset(w * 0.8f, h / 2f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.8f, h / 2f), Offset(w * 0.55f, h * 0.25f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.8f, h / 2f), Offset(w * 0.55f, h * 0.75f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun CropIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        drawLine(tint, Offset(w * 0.25f, h * 0.1f), Offset(w * 0.25f, h * 0.75f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.25f, h * 0.75f), Offset(w * 0.9f, h * 0.75f), stroke.width, stroke.cap)
+        
+        drawLine(tint, Offset(w * 0.75f, h * 0.9f), Offset(w * 0.75f, h * 0.25f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.75f, h * 0.25f), Offset(w * 0.1f, h * 0.25f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun PaperPlainIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        drawRect(tint, Offset(size.width * 0.2f, size.height * 0.15f), Size(size.width * 0.6f, size.height * 0.7f), style = stroke)
+    }
+}
+
+@Composable
+fun PaperRuledIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val rectStroke = Stroke(width = STROKE_WIDTH.toPx() * 0.8f, cap = StrokeCap.Round)
+        drawRect(tint, Offset(size.width * 0.2f, size.height * 0.15f), Size(size.width * 0.6f, size.height * 0.7f), style = rectStroke)
+        drawLine(tint, Offset(size.width * 0.2f, size.height * 0.4f), Offset(size.width * 0.8f, size.height * 0.4f), stroke.width * 0.6f)
+        drawLine(tint, Offset(size.width * 0.2f, size.height * 0.6f), Offset(size.width * 0.8f, size.height * 0.6f), stroke.width * 0.6f)
+    }
+}
+
+@Composable
+fun PaperDotsIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val rectStroke = Stroke(width = STROKE_WIDTH.toPx() * 0.8f, cap = StrokeCap.Round)
+        drawRect(tint, Offset(size.width * 0.2f, size.height * 0.15f), Size(size.width * 0.6f, size.height * 0.7f), style = rectStroke)
+        for (i in 1..2) {
+            for (j in 1..2) {
+                drawCircle(tint, radius = size.width * 0.03f, center = Offset(size.width * (0.2f + i * 0.2f), size.height * (0.15f + j * 0.23f)))
+            }
+        }
+    }
+}
+
+@Composable
+fun PaperGridIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val rectStroke = Stroke(width = STROKE_WIDTH.toPx() * 0.8f, cap = StrokeCap.Round)
+        drawRect(tint, Offset(size.width * 0.2f, size.height * 0.15f), Size(size.width * 0.6f, size.height * 0.7f), style = rectStroke)
+        val w = size.width
+        val h = size.height
+        val lineStroke = STROKE_WIDTH.toPx() * 0.4f
+        drawLine(tint, Offset(w * 0.5f, h * 0.15f), Offset(w * 0.5f, h * 0.85f), lineStroke)
+        drawLine(tint, Offset(w * 0.2f, h * 0.5f), Offset(w * 0.8f, h * 0.5f), lineStroke)
+    }
+}
+
+@Composable
+fun PaperIsoIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val rectStroke = Stroke(width = STROKE_WIDTH.toPx() * 0.8f, cap = StrokeCap.Round)
+        drawRect(tint, Offset(size.width * 0.2f, size.height * 0.15f), Size(size.width * 0.6f, size.height * 0.7f), style = rectStroke)
+        val w = size.width
+        val h = size.height
+        val lineStroke = STROKE_WIDTH.toPx() * 0.4f
+        drawLine(tint, Offset(w * 0.2f, h * 0.3f), Offset(w * 0.8f, h * 0.65f), lineStroke)
+        drawLine(tint, Offset(w * 0.2f, h * 0.65f), Offset(w * 0.8f, h * 0.3f), lineStroke)
+    }
+}
+
+@Composable
+fun CenterTargetIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        drawCircle(tint, radius = w * 0.15f, center = Offset(w / 2f, h / 2f), style = stroke)
+        drawLine(tint, Offset(w / 2f, h * 0.1f), Offset(w / 2f, h * 0.3f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w / 2f, h * 0.7f), Offset(w / 2f, h * 0.9f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.1f, h / 2f), Offset(w * 0.3f, h / 2f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.7f, h / 2f), Offset(w * 0.9f, h / 2f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun MirrorIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        drawLine(tint, Offset(w / 2f, h * 0.1f), Offset(w / 2f, h * 0.9f), stroke.width, stroke.cap)
+        
+        // Left triangle
+        drawLine(tint, Offset(w * 0.4f, h * 0.3f), Offset(w * 0.1f, h * 0.5f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.1f, h * 0.5f), Offset(w * 0.4f, h * 0.7f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.4f, h * 0.7f), Offset(w * 0.4f, h * 0.3f), stroke.width, stroke.cap)
+        
+        // Right triangle (mirrored)
+        drawLine(tint, Offset(w * 0.6f, h * 0.3f), Offset(w * 0.9f, h * 0.5f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.9f, h * 0.5f), Offset(w * 0.6f, h * 0.7f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.6f, h * 0.7f), Offset(w * 0.6f, h * 0.3f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun ResetIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        drawArc(
+            color = tint,
+            startAngle = 0f,
+            sweepAngle = 270f,
+            useCenter = false,
+            topLeft = Offset(w * 0.2f, h * 0.2f),
+            size = Size(w * 0.6f, h * 0.6f),
+            style = stroke
+        )
+        // Arrow head
+        drawLine(tint, Offset(w * 0.8f, h * 0.5f), Offset(w * 0.6f, h * 0.4f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.8f, h * 0.5f), Offset(w * 1.0f, h * 0.4f), stroke.width, stroke.cap)
+    }
+}

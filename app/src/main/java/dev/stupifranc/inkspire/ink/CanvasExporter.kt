@@ -31,10 +31,14 @@ object CanvasExporter {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(canvasSpec.backgroundColorArgb)
+        PaperStyleRenderer.draw(canvas, canvasSpec, 0f, 0f, width.toFloat(), height.toFloat(), scale)
 
         val renderer = CanvasStrokeRenderer.create()
-        val worldToBitmap = Matrix().apply { setScale(scale, scale) }
-        strokes.forEach { entry -> renderer.draw(canvas, entry.stroke, worldToBitmap) }
+        canvas.save()
+        canvas.scale(scale, scale)
+        val identity = Matrix()
+        strokes.forEach { entry -> renderer.draw(canvas, entry.stroke, identity) }
+        canvas.restore()
         return bitmap
     }
 

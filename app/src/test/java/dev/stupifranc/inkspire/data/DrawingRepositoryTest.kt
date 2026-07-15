@@ -1,6 +1,8 @@
 package dev.stupifranc.inkspire.data
 
 import com.google.common.truth.Truth.assertThat
+import dev.stupifranc.inkspire.model.DEFAULT_PAPER_SPACING
+import dev.stupifranc.inkspire.model.PaperStyle
 import java.io.File
 import org.junit.Rule
 import org.junit.Test
@@ -120,6 +122,35 @@ class DrawingRepositoryTest {
         assertThat(updated.width).isEqualTo(300f)
         assertThat(updated.height).isEqualTo(400f)
         assertThat(updated.backgroundColorArgb).isEqualTo(-16711936)
+    }
+
+    @Test
+    fun updateCanvasSpec_persistsPaperStyleAndSpacing() {
+        val repo = repository()
+        val meta = repo.createDrawing(name = "Dotted", width = 100f, height = 100f, backgroundColorArgb = -1)
+
+        repo.updateCanvasSpec(
+            meta.id, width = 100f, height = 100f, backgroundColorArgb = -1,
+            paperStyle = PaperStyle.DOTS, paperSpacing = 48f,
+        )
+
+        val updated = repository().listDrawings().single()
+        assertThat(updated.paperStyle).isEqualTo(PaperStyle.DOTS)
+        assertThat(updated.paperSpacing).isEqualTo(48f)
+    }
+
+    @Test
+    fun index_withoutPaperFields_loadsWithPlainDefaults() {
+        // An index written before the paper-style fields existed must still parse (forward compat).
+        val repo = repository()
+        File(tempFolder.root, "index.json").writeText(
+            """[{"id":"legacy","name":"Old","width":100.0,"height":100.0,"backgroundColorArgb":-1,""" +
+                """"createdAtEpochMillis":1,"updatedAtEpochMillis":1}]"""
+        )
+
+        val listed = repo.listDrawings().single()
+        assertThat(listed.paperStyle).isEqualTo(PaperStyle.PLAIN)
+        assertThat(listed.paperSpacing).isEqualTo(DEFAULT_PAPER_SPACING)
     }
 
     @Test

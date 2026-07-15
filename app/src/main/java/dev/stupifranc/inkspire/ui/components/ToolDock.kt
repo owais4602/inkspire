@@ -33,20 +33,36 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import dev.stupifranc.inkspire.core.CanvasEdge
 import dev.stupifranc.inkspire.model.BrushFamilyChoice
+import dev.stupifranc.inkspire.model.PaperStyle
 import dev.stupifranc.inkspire.model.Tool
+import dev.stupifranc.inkspire.ui.components.icons.ArrowDownIcon
+import dev.stupifranc.inkspire.ui.components.icons.ArrowLeftIcon
+import dev.stupifranc.inkspire.ui.components.icons.ArrowRightIcon
+import dev.stupifranc.inkspire.ui.components.icons.ArrowUpIcon
+import dev.stupifranc.inkspire.ui.components.icons.CenterTargetIcon
+import dev.stupifranc.inkspire.ui.components.icons.CropIcon
 import dev.stupifranc.inkspire.ui.components.icons.EraserIcon
 import dev.stupifranc.inkspire.ui.components.icons.ExportIcon
 import dev.stupifranc.inkspire.ui.components.icons.HandIcon
 import dev.stupifranc.inkspire.ui.components.icons.HighlighterIcon
 import dev.stupifranc.inkspire.ui.components.icons.MarkerIcon
+import dev.stupifranc.inkspire.ui.components.icons.MirrorIcon
 import dev.stupifranc.inkspire.ui.components.icons.MoreIcon
+import dev.stupifranc.inkspire.ui.components.icons.PaperDotsIcon
+import dev.stupifranc.inkspire.ui.components.icons.PaperGridIcon
+import dev.stupifranc.inkspire.ui.components.icons.PaperIsoIcon
+import dev.stupifranc.inkspire.ui.components.icons.PaperPlainIcon
+import dev.stupifranc.inkspire.ui.components.icons.PaperRuledIcon
 import dev.stupifranc.inkspire.ui.components.icons.PenIcon
+import dev.stupifranc.inkspire.ui.components.icons.ResetIcon
 import dev.stupifranc.inkspire.ui.components.icons.ResizeIcon
 import dev.stupifranc.inkspire.ui.components.icons.SymmetryIcon
+import dev.stupifranc.inkspire.ui.components.icons.TuneIcon
 import kotlin.math.roundToInt
 
-private enum class DockExpansion { NONE, SIZE, SYMMETRY, MORE }
+private enum class DockExpansion { NONE, SIZE, SYMMETRY, CANVAS, MORE }
 
 /** Compact, icon-first floating dock (Apple Notes markup-toolbar style) — replaces the old stacked text-button rows. */
 @Composable
@@ -73,8 +89,13 @@ fun ToolDock(
     onResetCenter: () -> Unit,
     onColorClick: () -> Unit,
     onResize: () -> Unit,
+    onGrowEdge: (CanvasEdge) -> Unit,
     onExport: () -> Unit,
     onCanvasColorClick: () -> Unit,
+    paperStyle: PaperStyle,
+    paperSpacing: Float,
+    onPaperStyleChange: (PaperStyle) -> Unit,
+    onPaperSpacingChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expansion by remember { mutableStateOf(DockExpansion.NONE) }
@@ -116,10 +137,21 @@ fun ToolDock(
                             onToggleCenterPlacement = onToggleCenterPlacement,
                             onResetCenter = onResetCenter,
                         )
+                        DockExpansion.CANVAS -> CanvasSizePanel(
+                            onGrowEdge = onGrowEdge,
+                            onResize = {
+                                expansion = DockExpansion.NONE
+                                onResize()
+                            },
+                        )
                         DockExpansion.MORE -> MorePanel(
                             canvasColorArgb = canvasColorArgb,
+                            paperStyle = paperStyle,
+                            paperSpacing = paperSpacing,
                             onExport = onExport,
                             onCanvasColorClick = onCanvasColorClick,
+                            onPaperStyleChange = onPaperStyleChange,
+                            onPaperSpacingChange = onPaperSpacingChange,
                         )
                         DockExpansion.NONE -> Unit
                     }
@@ -177,7 +209,7 @@ fun ToolDock(
                         .clickable(onClick = onColorClick),
                 )
 
-                DockIconButton(selected = false, onClick = onResize) { tint -> ResizeIcon(tint) }
+                DockIconButton(selected = expansion == DockExpansion.CANVAS, onClick = { toggle(DockExpansion.CANVAS) }) { tint -> ResizeIcon(tint) }
 
                 DockDivider()
 
@@ -197,9 +229,9 @@ private fun SymmetryPanel(
     onToggleCenterPlacement: () -> Unit,
     onResetCenter: () -> Unit,
 ) {
-    Column {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Sectors: $sectors", modifier = Modifier.padding(end = 8.dp))
+            Text("$sectors", modifier = Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelMedium)
             Slider(
                 value = sectors.toFloat(),
                 onValueChange = { onSectorsChange(it.roundToInt()) },
@@ -209,36 +241,84 @@ private fun SymmetryPanel(
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Mirror", modifier = Modifier.padding(end = 8.dp))
-            Switch(checked = mirror, onCheckedChange = onMirrorChange)
+            DockIconButton(selected = mirror, onClick = { onMirrorChange(!mirror) }) { tint -> MirrorIcon(tint) }
+            DockDivider()
+            DockIconButton(selected = awaitingCenterPlacement, onClick = onToggleCenterPlacement) { tint -> CenterTargetIcon(tint) }
+            DockIconButton(selected = false, onClick = onResetCenter) { tint -> ResetIcon(tint) }
         }
+    }
+}
+
+/** Explicit, deliberate canvas growth in a chosen direction ("extend it like a sheet of paper"), plus the precise drag-handle resize. */
+@Composable
+private fun CanvasSizePanel(
+    onGrowEdge: (CanvasEdge) -> Unit,
+    onResize: () -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        DockIconButton(selected = false, onClick = { onGrowEdge(CanvasEdge.TOP) }) { tint -> ArrowUpIcon(tint) }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onToggleCenterPlacement) {
-                Text(if (awaitingCenterPlacement) "Tap canvas to set center…" else "Set center")
-            }
-            TextButton(onClick = onResetCenter) { Text("Center") }
+            DockIconButton(selected = false, onClick = { onGrowEdge(CanvasEdge.LEFT) }) { tint -> ArrowLeftIcon(tint) }
+            DockDivider()
+            DockIconButton(selected = false, onClick = onResize) { tint -> CropIcon(tint) }
+            DockDivider()
+            DockIconButton(selected = false, onClick = { onGrowEdge(CanvasEdge.RIGHT) }) { tint -> ArrowRightIcon(tint) }
         }
+        DockIconButton(selected = false, onClick = { onGrowEdge(CanvasEdge.BOTTOM) }) { tint -> ArrowDownIcon(tint) }
     }
 }
 
 @Composable
 private fun MorePanel(
     canvasColorArgb: Int,
+    paperStyle: PaperStyle,
+    paperSpacing: Float,
     onExport: () -> Unit,
     onCanvasColorClick: () -> Unit,
+    onPaperStyleChange: (PaperStyle) -> Unit,
+    onPaperSpacingChange: (Float) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        DockIconButton(selected = false, onClick = onExport) { tint -> ExportIcon(tint) }
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(start = 4.dp)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            DockIconButton(selected = false, onClick = onExport) { tint -> ExportIcon(tint) }
+            DockDivider()
             Box(
                 modifier = Modifier
+                    .padding(horizontal = 8.dp)
                     .size(28.dp)
                     .clip(CircleShape)
                     .background(Color(canvasColorArgb))
                     .border(1.dp, Color.Black.copy(alpha = 0.15f), CircleShape)
                     .clickable(onClick = onCanvasColorClick),
             )
-            Text("Canvas", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 2.dp))
+        }
+        DockDivider()
+        Row {
+            PaperStyle.entries.forEach { style ->
+                DockIconButton(
+                    selected = style == paperStyle,
+                    onClick = { onPaperStyleChange(style) }
+                ) { tint ->
+                    when (style) {
+                        PaperStyle.PLAIN -> PaperPlainIcon(tint)
+                        PaperStyle.RULED -> PaperRuledIcon(tint)
+                        PaperStyle.DOTS -> PaperDotsIcon(tint)
+                        PaperStyle.GRID -> PaperGridIcon(tint)
+                        PaperStyle.ISOMETRIC -> PaperIsoIcon(tint)
+                    }
+                }
+            }
+        }
+        AnimatedVisibility(visible = paperStyle != PaperStyle.PLAIN) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                TuneIcon(tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                Slider(
+                    value = paperSpacing,
+                    onValueChange = onPaperSpacingChange,
+                    valueRange = 24f..128f,
+                    modifier = Modifier.width(140.dp).padding(start = 8.dp),
+                )
+            }
         }
     }
 }

@@ -1,6 +1,8 @@
 package dev.stupifranc.inkspire.data
 
+import dev.stupifranc.inkspire.model.DEFAULT_PAPER_SPACING
 import dev.stupifranc.inkspire.model.DrawingMeta
+import dev.stupifranc.inkspire.model.PaperStyle
 import java.io.File
 import java.util.UUID
 import kotlinx.serialization.SerializationException
@@ -47,12 +49,21 @@ class DrawingRepository(private val rootDir: File) {
         updateMeta(id) { it.copy(name = newName, updatedAtEpochMillis = System.currentTimeMillis()) }
     }
 
-    fun updateCanvasSpec(id: String, width: Float, height: Float, backgroundColorArgb: Int) {
+    fun updateCanvasSpec(
+        id: String,
+        width: Float,
+        height: Float,
+        backgroundColorArgb: Int,
+        paperStyle: PaperStyle = PaperStyle.PLAIN,
+        paperSpacing: Float = DEFAULT_PAPER_SPACING,
+    ) {
         updateMeta(id) {
             it.copy(
                 width = width,
                 height = height,
                 backgroundColorArgb = backgroundColorArgb,
+                paperStyle = paperStyle,
+                paperSpacing = paperSpacing,
                 updatedAtEpochMillis = System.currentTimeMillis(),
             )
         }

@@ -40,6 +40,7 @@ import dev.stupifranc.inkspire.model.Tool
 import dev.stupifranc.inkspire.ui.components.CanvasResizeOverlay
 import dev.stupifranc.inkspire.ui.components.ColorPicker
 import dev.stupifranc.inkspire.ui.components.HistoryPill
+import dev.stupifranc.inkspire.ui.components.Minimap
 import dev.stupifranc.inkspire.ui.components.ToolDock
 import kotlin.math.roundToInt
 
@@ -56,7 +57,9 @@ fun EditorScreen(
     var showExportDialog by remember { mutableStateOf(false) }
     var pendingExportScale by remember { mutableStateOf<Int?>(null) }
     var dockCollapseSignal by remember { mutableStateOf(0) }
-    val inkBrush = remember(viewModel.brushSpec) { viewModel.brushSpec.toInkBrush() }
+    val inkBrush = remember(viewModel.brushSpec, viewModel.viewport.scale) {
+        viewModel.brushSpec.copy(size = viewModel.brushSpec.size * viewModel.viewport.scale).toInkBrush()
+    }
     val context = LocalContext.current
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -148,21 +151,17 @@ fun EditorScreen(
                     .padding(16.dp),
             )
 
-            Surface(
+            Minimap(
+                canvasSpec = viewModel.canvasSpec,
+                viewport = viewModel.viewport,
+                containerWidth = viewModel.containerWidth,
+                containerHeight = viewModel.containerHeight,
+                strokes = viewModel.strokes,
+                onClick = viewModel::fitToScreen,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(16.dp),
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 2.dp,
-                onClick = viewModel::fitToScreen,
-            ) {
-                Text(
-                    "${(viewModel.viewport.scale * 100).roundToInt()}%",
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                )
-            }
+                    .padding(16.dp)
+            )
 
             ToolDock(
                 tool = viewModel.tool,
@@ -190,8 +189,13 @@ fun EditorScreen(
                 onResetCenter = viewModel::resetSymmetryCenter,
                 onColorClick = { showColorPicker = true },
                 onResize = { isResizeMode = true },
+                onGrowEdge = viewModel::growEdge,
                 onExport = { showExportDialog = true },
                 onCanvasColorClick = { showCanvasColorPicker = true },
+                paperStyle = viewModel.canvasSpec.paperStyle,
+                paperSpacing = viewModel.canvasSpec.paperSpacing,
+                onPaperStyleChange = viewModel::setPaperStyle,
+                onPaperSpacingChange = viewModel::setPaperSpacing,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 20.dp),

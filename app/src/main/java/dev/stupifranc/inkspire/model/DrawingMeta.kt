@@ -10,6 +10,8 @@ data class DrawingMeta(
     val width: Float,
     val height: Float,
     val backgroundColorArgb: Int,
+    val paperStyle: PaperStyle = PaperStyle.PLAIN,
+    val paperSpacing: Float = DEFAULT_PAPER_SPACING,
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,
     val hasThumbnail: Boolean = false,

@@ -1,6 +1,7 @@
 package dev.stupifranc.inkspire.ink
 
 import android.graphics.Matrix
+import android.graphics.Path
 import android.view.MotionEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -162,24 +163,42 @@ fun DrawingSurface(
             val pageVisibleAsObject =
                 page.left > 0f || page.top > 0f || page.right < size.width || page.bottom < size.height
 
+            // 1. Workspace background
             drawRect(WORKSPACE_COLOR)
+
+            // 2. Page shadow (drawn behind the page)
+            if (pageVisibleAsObject) {
+                drawPageShadow(page)
+            }
+
+            // 3. Page background
             drawRect(color = Color(canvasSpec.backgroundColorArgb), topLeft = page.topLeft, size = page.size)
 
-            val worldToScreen = viewport.toWorldToScreenMatrix()
-            drawIntoCanvas { canvas ->
-                strokes.forEach { entry ->
-                    renderer.draw(canvas.nativeCanvas, entry.stroke, worldToScreen)
+            // 4. Clip all ink and patterns to the page
+            clipRect(page.left, page.top, page.right, page.bottom) {
+                drawIntoCanvas { canvas ->
+                    PaperStyleRenderer.draw(
+                        canvas.nativeCanvas, canvasSpec,
+                        page.left, page.top, page.width, page.height,
+                        viewport.scale,
+                    )
+                }
+
+                val worldToScreen = viewport.toWorldToScreenMatrix()
+                drawIntoCanvas { canvas ->
+                    val nativeCanvas = canvas.nativeCanvas
+                    nativeCanvas.save()
+                    nativeCanvas.concat(worldToScreen)
+                    val identity = android.graphics.Matrix()
+                    strokes.forEach { entry ->
+                        renderer.draw(nativeCanvas, entry.stroke, identity)
+                    }
+                    nativeCanvas.restore()
                 }
             }
 
-            // The page reads as paper: ink is only fully visible on it. Strokes stranded outside
-            // (possible after a canvas shrink) stay faintly visible under a workspace-colored veil
-            // so they remain discoverable and erasable rather than silently clipped away.
+            // 5. Page border
             if (pageVisibleAsObject) {
-                clipRect(page.left, page.top, page.right, page.bottom, clipOp = ClipOp.Difference) {
-                    drawRect(WORKSPACE_COLOR.copy(alpha = OUTSIDE_PAGE_VEIL_ALPHA))
-                    drawPageShadow(page)
-                }
                 drawRect(
                     color = PAGE_EDGE_COLOR,
                     topLeft = page.topLeft,
@@ -236,6 +255,23 @@ fun DrawingSurface(
                             onStrokeActiveChanged = { strokeInProgress = it },
                         )
                     }
+                }
+            },
+            // Wet (in-progress) strokes are visually clipped to the page, matching the dry layer's
+            // veil: maskPath hides ink *inside* the path (verified against the 1.0.0 sources —
+            // drawn with a clearing paint in view coordinates), so mask = view bounds minus the
+            // page rect. Reruns on every viewport/page recomposition, so it tracks pan/zoom.
+            update = { view ->
+                view.maskPath = if (view.width > 0 && view.height > 0) {
+                    val topLeft = viewport.documentToScreen(Point(0f, 0f))
+                    val bottomRight = viewport.documentToScreen(Point(canvasSpec.width, canvasSpec.height))
+                    Path().apply {
+                        fillType = Path.FillType.EVEN_ODD
+                        addRect(0f, 0f, view.width.toFloat(), view.height.toFloat(), Path.Direction.CW)
+                        addRect(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y, Path.Direction.CW)
+                    }
+                } else {
+                    null
                 }
             },
         )
