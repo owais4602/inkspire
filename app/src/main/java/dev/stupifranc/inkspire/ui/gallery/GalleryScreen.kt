@@ -212,14 +212,13 @@ fun GalleryScreen(
     val tokens = tokensFor(prefs.theme)
     SystemBarIcons(lightWall = !tokens.isDark)
 
-    var renameTarget by remember { mutableStateOf<DrawingMeta?>(null) }
     var showCustomizeSheet by remember { mutableStateOf(false) }
-    var focusedDrawingId by remember { mutableStateOf<String?>(null) }
     
     val gridState = rememberLazyStaggeredGridState()
     var draggedId by remember { mutableStateOf<String?>(null) }
     val dragOffset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     var dropTargetId by remember { mutableStateOf<String?>(null) }
+    var isHoveringDeleteBin by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
@@ -319,23 +318,38 @@ fun GalleryScreen(
                                             val fingerX = myItem.offset.x + dragStart.x + dragOffset.value.x
                                             val fingerY = myItem.offset.y + dragStart.y + dragOffset.value.y
                                             
-                                            val boxes = visibleItems
-                                                .filter { it.key is String && viewModel.drawings.any { d -> d.id == it.key } }
-                                                .map {
-                                                    ItemBox(
-                                                        key = it.key as String,
-                                                        left = it.offset.x.toFloat(),
-                                                        top = it.offset.y.toFloat(),
-                                                        width = it.size.width.toFloat(),
-                                                        height = it.size.height.toFloat()
-                                                    )
-                                                }
+                                            val binTop = 0f
+                                            val binBottom = with(density) { 150.dp.toPx() }
+                                            val binWidth = with(density) { 150.dp.toPx() }
+                                            val binLeft = (layoutInfo.viewportSize.width - binWidth) / 2f
+                                            val binRight = binLeft + binWidth
                                             
-                                            val newTarget = reorderTarget(fingerX, fingerY, boxes, meta.id)
-                                            if (newTarget != dropTargetId && newTarget != null) {
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            if (fingerY < binBottom && fingerX in binLeft..binRight) {
+                                                if (!isHoveringDeleteBin) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                isHoveringDeleteBin = true
+                                                dropTargetId = null
+                                            } else {
+                                                if (isHoveringDeleteBin) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                isHoveringDeleteBin = false
+                                                
+                                                val boxes = visibleItems
+                                                    .filter { it.key is String && viewModel.drawings.any { d -> d.id == it.key } }
+                                                    .map {
+                                                        ItemBox(
+                                                            key = it.key as String,
+                                                            left = it.offset.x.toFloat(),
+                                                            top = it.offset.y.toFloat(),
+                                                            width = it.size.width.toFloat(),
+                                                            height = it.size.height.toFloat()
+                                                        )
+                                                    }
+                                                
+                                                val newTarget = reorderTarget(fingerX, fingerY, boxes, meta.id)
+                                                if (newTarget != dropTargetId && newTarget != null) {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                }
+                                                dropTargetId = newTarget
                                             }
-                                            dropTargetId = newTarget
                                             
                                             val topBound = layoutInfo.viewportStartOffset.toFloat()
                                             val bottomBound = layoutInfo.viewportEndOffset.toFloat()
@@ -348,8 +362,12 @@ fun GalleryScreen(
                                         }
                                     },
                                     onDragEnd = {
-                                        if (dragOffset.value == Offset.Zero) {
-                                            focusedDrawingId = meta.id
+                                        if (isHoveringDeleteBin) {
+                                            viewModel.delete(meta.id)
+                                            draggedId = null
+                                            dropTargetId = null
+                                            isHoveringDeleteBin = false
+                                        } else if (dragOffset.value == Offset.Zero) {
                                             draggedId = null
                                             dropTargetId = null
                                         } else {
@@ -366,6 +384,7 @@ fun GalleryScreen(
                                         }
                                     },
                                     onDragCancel = {
+                                        isHoveringDeleteBin = false
                                         scope.launch { 
                                             dragOffset.animateTo(Offset.Zero, spring(dampingRatio = 0.7f))
                                             draggedId = null
@@ -396,65 +415,28 @@ fun GalleryScreen(
                     .align(Alignment.BottomEnd)
                     .padding(end = 24.dp, bottom = insets.calculateBottomPadding() + 24.dp),
             )
-        }
-
-        focusedDrawingId?.let { focusId ->
-            val meta = viewModel.drawings.find { it.id == focusId }
-            if (meta != null) {
+            
+            androidx.compose.animation.AnimatedVisibility(
+                visible = draggedId != null,
+                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(initialOffsetY = { -it }),
+                exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = insets.calculateTopPadding() + 24.dp)
+            ) {
+                val binScale by animateFloatAsState(if (isHoveringDeleteBin) 1.2f else 1f, label = "binScale")
+                val binColor = if (isHoveringDeleteBin) DeleteRed else tokens.textPrimary
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.6f))
-                        .clickable { focusedDrawingId = null },
-                    contentAlignment = Alignment.Center
+                        .graphicsLayer {
+                            scaleX = binScale
+                            scaleY = binScale
+                        }
+                        .background(tokens.surface.copy(alpha = 0.9f), RoundedCornerShape(50))
+                        .border(1.dp, tokens.hairline, RoundedCornerShape(50))
+                        .padding(16.dp)
                 ) {
-                     Box(modifier = Modifier
-                         .fillMaxWidth(0.8f)
-                         .aspectRatio(if(meta.width > 0f && meta.height > 0f) meta.width/meta.height else FALLBACK_CARD_RATIO)
-                         .clickable { onOpenDrawing(meta.id) }
-                     ) {
-                         GalleryPiece(
-                            meta = meta,
-                            thumbnailPath = viewModel.thumbnailFile(meta.id)?.path,
-                            prefs = prefs,
-                            tokens = tokens,
-                        )
-                     }
-                     
-                     Row(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)) {
-                         TextButton(onClick = { onOpenDrawing(meta.id); focusedDrawingId = null }) { Text("Open", color = Color.White) }
-                         TextButton(
-                             onClick = {
-                                 viewModel.togglePin(meta.id)
-                                 focusedDrawingId = null
-                             }
-                         ) {
-                             Text(if (meta.isPinned) "Unpin" else "Pin", color = Color.White)
-                         }
-                         TextButton(onClick = { renameTarget = meta; focusedDrawingId = null }) { Text("Rename", color = Color.White) }
-                         TextButton(onClick = { viewModel.duplicate(meta.id); focusedDrawingId = null }) { Text("Duplicate", color = Color.White) }
-                         TextButton(onClick = { viewModel.delete(meta.id); focusedDrawingId = null }) { Text("Delete", color = DeleteRed) }
-                     }
+                    CrossIcon(tint = binColor)
                 }
             }
-        }
-
-        renameTarget?.let { meta ->
-            var name by remember(meta.id) { mutableStateOf(meta.name) }
-            AlertDialog(
-                onDismissRequest = { renameTarget = null },
-                title = { Text("Rename piece") },
-                text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        viewModel.rename(meta.id, name)
-                        renameTarget = null
-                    }) { Text("Rename") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { renameTarget = null }) { Text("Cancel") }
-                },
-            )
         }
 
         if (showCustomizeSheet) {
@@ -818,4 +800,25 @@ private fun themeLabel(theme: AppTheme) = when (theme) {
     AppTheme.DARK -> "Dark"
     AppTheme.LIGHT -> "Light"
     AppTheme.SYSTEM -> "System"
+}
+
+@Composable
+private fun CrossIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(24.dp)) {
+        val strokeWidth = 2.dp.toPx()
+        drawLine(
+            color = tint,
+            start = Offset(4.dp.toPx(), 4.dp.toPx()),
+            end = Offset(size.width - 4.dp.toPx(), size.height - 4.dp.toPx()),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width - 4.dp.toPx(), 4.dp.toPx()),
+            end = Offset(4.dp.toPx(), size.height - 4.dp.toPx()),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+    }
 }
