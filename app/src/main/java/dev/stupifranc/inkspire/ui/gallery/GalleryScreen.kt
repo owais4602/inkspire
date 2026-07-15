@@ -269,6 +269,7 @@ fun GalleryScreen(
                         val liftScale by animateFloatAsState(if (isDragged) 1.06f else 1f, spring(), label = "scale")
                         val liftElevation by animateDpAsState(if (isDragged) 12.dp else 0.dp, spring(), label = "elevation")
                         val targetScale by animateFloatAsState(if (isDropTarget && !isDragged) 0.94f else 1f, label = "targetScale")
+                        val targetAlpha by animateFloatAsState(if (isDropTarget && !isDragged) 0.4f else 1f, label = "targetAlpha")
                         
                         val cornerShape = if (meta.shape == CanvasShape.RECTANGLE) {
                             RoundedCornerShape(prefs.cornerStyle.radiusDp.dp)
@@ -290,6 +291,7 @@ fun GalleryScreen(
                                 } else {
                                     scaleX = targetScale
                                     scaleY = targetScale
+                                    alpha = targetAlpha
                                 }
                             }
                             .pointerInput(meta.id) {
@@ -393,9 +395,6 @@ fun GalleryScreen(
                                     }
                                 )
                             }
-                            .then(
-                                if (isDropTarget && !isDragged) Modifier.border(2.dp, tokens.textPrimary, cornerShape) else Modifier
-                            )
                         ) {
                             GalleryPiece(
                                 meta = meta,
