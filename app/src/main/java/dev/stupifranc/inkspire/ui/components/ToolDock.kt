@@ -45,6 +45,7 @@ import dev.stupifranc.inkspire.ui.components.icons.CenterTargetIcon
 import dev.stupifranc.inkspire.ui.components.icons.CropIcon
 import dev.stupifranc.inkspire.ui.components.icons.EraserIcon
 import dev.stupifranc.inkspire.ui.components.icons.ExportIcon
+import dev.stupifranc.inkspire.ui.components.icons.StylusIcon
 import dev.stupifranc.inkspire.ui.components.icons.HandIcon
 import dev.stupifranc.inkspire.ui.components.icons.HighlighterIcon
 import dev.stupifranc.inkspire.ui.components.icons.MarkerIcon
@@ -93,6 +94,8 @@ fun ToolDock(
     onResize: () -> Unit,
     onGrowEdge: (CanvasEdge) -> Unit,
     onExport: () -> Unit,
+    stylusOnly: Boolean,
+    onStylusOnlyChange: (Boolean) -> Unit,
     onCanvasColorClick: () -> Unit,
     paperStyle: PaperStyle,
     paperSpacing: Float,
@@ -154,7 +157,9 @@ fun ToolDock(
                             canvasColorArgb = canvasColorArgb,
                             paperStyle = paperStyle,
                             paperSpacing = paperSpacing,
+                            stylusOnly = stylusOnly,
                             onExport = { toggle(DockExpansion.NONE); onExport() },
+                            onStylusOnlyChange = onStylusOnlyChange,
                             onCanvasColorClick = { toggle(DockExpansion.NONE); onCanvasColorClick() },
                             onPaperStyleChange = onPaperStyleChange,
                             onPaperSpacingChange = onPaperSpacingChange,
@@ -306,7 +311,9 @@ private fun MorePanel(
     canvasColorArgb: Int,
     paperStyle: PaperStyle,
     paperSpacing: Float,
+    stylusOnly: Boolean,
     onExport: () -> Unit,
+    onStylusOnlyChange: (Boolean) -> Unit,
     onCanvasColorClick: () -> Unit,
     onPaperStyleChange: (PaperStyle) -> Unit,
     onPaperSpacingChange: (Float) -> Unit,
@@ -314,6 +321,8 @@ private fun MorePanel(
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             DockIconButton(selected = false, onClick = onExport) { tint -> ExportIcon(tint) }
+            DockDivider()
+            DockIconButton(selected = stylusOnly, onClick = { onStylusOnlyChange(!stylusOnly) }) { tint -> StylusIcon(tint) }
             DockDivider()
             Box(
                 modifier = Modifier

@@ -55,6 +55,7 @@ private val DEFAULT_SIZES = mapOf(
 
 class EditorViewModel(application: Application, private val drawingId: String) : AndroidViewModel(application) {
     private val repository = DrawingRepository(File(application.filesDir, "drawings"))
+    private val appPrefsStore = dev.stupifranc.inkspire.data.AppPrefsStore(File(application.filesDir, "app_prefs"))
     private val recentColorsStore = RecentColorsStore(File(application.filesDir, "app_prefs"))
     private val collection = EntryCollection<StrokeEntry>()
     private val sizeMemory = DEFAULT_SIZES.toMutableMap()
@@ -66,6 +67,14 @@ class EditorViewModel(application: Application, private val drawingId: String) :
         private set
     var canRedo by mutableStateOf(false)
         private set
+
+    var appPrefs by mutableStateOf(appPrefsStore.load())
+        private set
+
+    fun updateAppPrefs(prefs: dev.stupifranc.inkspire.model.AppPrefs) {
+        appPrefs = prefs
+        appPrefsStore.save(prefs)
+    }
 
     var tool by mutableStateOf(Tool.NONE)
         private set
@@ -184,14 +193,10 @@ class EditorViewModel(application: Application, private val drawingId: String) :
     private fun contentUnion(): BoundingBox =
         ContentBounds.union(collection.entries.mapNotNull { it.boundingBox() }, canvasSpec.width, canvasSpec.height)
 
-    fun panBy(dx: Float, dy: Float) {
-        viewport = viewport.pannedBy(dx, dy)
-            .clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight, panMargin())
-    }
-
-    fun zoomBy(factor: Float, focal: Point) {
-        viewport = viewport.zoomedBy(factor, focal)
-            .clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight, panMargin())
+    fun transformBy(panX: Float, panY: Float, zoom: Float, focal: Point) {
+        val panned = viewport.pannedBy(panX, panY)
+        val zoomed = if (zoom != 1f) panned.zoomedBy(zoom, focal) else panned
+        viewport = zoomed.clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight, panMargin())
     }
 
     /** Always fits *everything* — the page union'd with the drawing's content bounds, not just the page. */

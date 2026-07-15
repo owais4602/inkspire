@@ -10,6 +10,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -434,5 +436,26 @@ fun CircleIcon(tint: Color, modifier: Modifier = Modifier) {
         val left = (size.width - d) / 2f
         val top = (size.height - d) / 2f
         drawOval(tint, Offset(left, top), Size(d, d), style = stroke)
+    }
+}
+
+@Composable
+fun StylusIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        
+        // A simple diagonal stylus shape
+        val path = Path().apply {
+            moveTo(size.width * 0.25f, size.height * 0.75f)
+            lineTo(size.width * 0.35f, size.height * 0.65f)
+            lineTo(size.width * 0.85f, size.height * 0.15f)
+            lineTo(size.width * 0.95f, size.height * 0.25f)
+            lineTo(size.width * 0.45f, size.height * 0.75f)
+            lineTo(size.width * 0.25f, size.height * 0.85f)
+            close()
+        }
+        drawPath(path, tint, style = stroke)
+        // Draw the tip
+        drawCircle(tint, radius = size.width * 0.05f, center = Offset(size.width * 0.25f, size.height * 0.85f))
     }
 }

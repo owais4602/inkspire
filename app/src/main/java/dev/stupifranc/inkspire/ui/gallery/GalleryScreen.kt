@@ -42,6 +42,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
@@ -88,9 +89,9 @@ import dev.stupifranc.inkspire.core.PinchSteps
 import dev.stupifranc.inkspire.model.CanvasShape
 import dev.stupifranc.inkspire.model.CornerStyle
 import dev.stupifranc.inkspire.model.DrawingMeta
-import dev.stupifranc.inkspire.model.GalleryPrefs
+import dev.stupifranc.inkspire.model.AppPrefs
 import dev.stupifranc.inkspire.model.ThumbSize
-import dev.stupifranc.inkspire.model.WallTone
+import dev.stupifranc.inkspire.model.AppTheme
 import dev.stupifranc.inkspire.ui.components.canvasOutlineShape
 import dev.stupifranc.inkspire.ui.components.icons.MoreIcon
 import dev.stupifranc.inkspire.ui.components.icons.PlusIcon
@@ -129,7 +130,11 @@ private val LightGalleryTokens = GalleryTokens(
     isDark = false,
 )
 
-private fun tokensFor(wall: WallTone): GalleryTokens = if (wall == WallTone.DARK) DarkGalleryTokens else LightGalleryTokens
+@Composable
+private fun tokensFor(theme: AppTheme): GalleryTokens {
+    val isSystemDark = isSystemInDarkTheme()
+    return if (theme == AppTheme.DARK || (theme == AppTheme.SYSTEM && isSystemDark)) DarkGalleryTokens else LightGalleryTokens
+}
 
 /** The only non-grayscale pixel allowed on this screen — the destructive-action convention, desaturated. */
 private val DeleteRed = Color(0xFFE05C52)
@@ -158,9 +163,7 @@ private fun galleryColorScheme(tokens: GalleryTokens): ColorScheme {
     )
 }
 
-/** Ratio guard so an extreme canvas (e.g. a long banner) can't produce an absurd sliver of a card. */
-private const val MIN_CARD_RATIO = 0.58f
-private const val MAX_CARD_RATIO = 1.8f
+/** Fallback ratio if dimensions are missing or invalid. */
 private const val FALLBACK_CARD_RATIO = 0.8f
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -181,7 +184,7 @@ fun GalleryScreen(
     }
 
     val prefs = viewModel.prefs
-    val tokens = tokensFor(prefs.wall)
+    val tokens = tokensFor(prefs.theme)
     SystemBarIcons(lightWall = !tokens.isDark)
 
     var renameTarget by remember { mutableStateOf<DrawingMeta?>(null) }
@@ -376,7 +379,7 @@ private fun GalleryHeader(pieceCount: Int, tokens: GalleryTokens, onOpenCustomiz
 private fun GalleryPiece(
     meta: DrawingMeta,
     thumbnailFile: File?,
-    prefs: GalleryPrefs,
+    prefs: AppPrefs,
     tokens: GalleryTokens,
     onClick: () -> Unit,
     onRename: () -> Unit,
@@ -385,7 +388,7 @@ private fun GalleryPiece(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val ratio = if (meta.width > 0f && meta.height > 0f) {
-        (meta.width / meta.height).coerceIn(MIN_CARD_RATIO, MAX_CARD_RATIO)
+        meta.width / meta.height
     } else {
         FALLBACK_CARD_RATIO
     }
@@ -517,9 +520,9 @@ private fun KaleidoscopeGlyph(tokens: GalleryTokens) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GalleryCustomizationSheet(
-    prefs: GalleryPrefs,
+    prefs: AppPrefs,
     tokens: GalleryTokens,
-    onPrefsChange: (GalleryPrefs) -> Unit,
+    onPrefsChange: (AppPrefs) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -565,11 +568,11 @@ private fun GalleryCustomizationSheet(
 
             SheetSectionLabel("Wall", tokens)
             SegmentedRow(
-                options = WallTone.entries,
-                selected = prefs.wall,
+                options = AppTheme.entries,
+                selected = prefs.theme,
                 tokens = tokens,
-                label = ::wallToneLabel,
-                onSelect = { onPrefsChange(prefs.copy(wall = it)) },
+                label = ::themeLabel,
+                onSelect = { onPrefsChange(prefs.copy(theme = it)) },
             )
         }
     }
@@ -644,7 +647,8 @@ private fun cornerStyleLabel(style: CornerStyle) = when (style) {
     CornerStyle.ROUNDED -> "Rounded"
 }
 
-private fun wallToneLabel(tone: WallTone) = when (tone) {
-    WallTone.DARK -> "Dark"
-    WallTone.LIGHT -> "Light"
+private fun themeLabel(theme: AppTheme) = when (theme) {
+    AppTheme.DARK -> "Dark"
+    AppTheme.LIGHT -> "Light"
+    AppTheme.SYSTEM -> "System"
 }

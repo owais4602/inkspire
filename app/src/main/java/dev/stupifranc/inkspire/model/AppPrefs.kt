@@ -17,18 +17,20 @@ enum class CornerStyle(val radiusDp: Int) {
     ROUNDED(14),
 }
 
-/** User-adjustable gallery wall (background) tone. */
+/** User-adjustable app theme. */
 @Serializable
-enum class WallTone {
+enum class AppTheme {
     DARK,
     LIGHT,
+    SYSTEM,
 }
 
-/** App-wide (not per-drawing) gallery display preferences, persisted via [dev.stupifranc.inkspire.data.GalleryPrefsStore]. */
+/** App-wide preferences, persisted via [dev.stupifranc.inkspire.data.AppPrefsStore]. */
 @Serializable
-data class GalleryPrefs(
+data class AppPrefs(
     val thumbSize: ThumbSize = ThumbSize.MEDIUM,
     val borderEnabled: Boolean = true,
     val cornerStyle: CornerStyle = CornerStyle.ROUNDED,
-    val wall: WallTone = WallTone.DARK,
+    val theme: AppTheme = AppTheme.DARK,
+    val stylusOnly: Boolean = false,
 )

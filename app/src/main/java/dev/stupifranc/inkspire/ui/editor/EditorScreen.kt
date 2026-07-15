@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
+import dev.stupifranc.inkspire.model.AppTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -100,8 +104,17 @@ fun EditorScreen(
         }
     }
 
-    // targetSdk 35 enforces edge-to-edge; the editor pads itself (the gallery draws full-bleed instead).
-    Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+    val appPrefs = viewModel.appPrefs
+    val isDark = when (appPrefs.theme) {
+        AppTheme.DARK -> true
+        AppTheme.LIGHT -> false
+        AppTheme.SYSTEM -> isSystemInDarkTheme()
+    }
+    val colorScheme = if (isDark) darkColorScheme() else lightColorScheme()
+
+    MaterialTheme(colorScheme = colorScheme) {
+        // targetSdk 35 enforces edge-to-edge; the editor pads itself (the gallery draws full-bleed instead).
+        Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         DrawingSurface(
             strokes = viewModel.strokes,
             tool = viewModel.tool,
@@ -111,14 +124,14 @@ fun EditorScreen(
             symmetryConfig = viewModel.symmetryConfig,
             canvasSpec = viewModel.canvasSpec,
             viewport = viewModel.viewport,
+            stylusOnly = viewModel.appPrefs.stylusOnly,
             awaitingCenterPlacement = viewModel.awaitingCenterPlacement,
             onStrokesFinished = viewModel::onStrokesFinished,
             onErase = viewModel::eraseHits,
             onContainerSizeChanged = viewModel::onContainerSizeChanged,
             onSymmetryCenterChanged = viewModel::moveSymmetryCenter,
             onPlaceCenter = viewModel::placeSymmetryCenterAt,
-            onPan = viewModel::panBy,
-            onZoom = viewModel::zoomBy,
+            onTransform = viewModel::transformBy,
             onDoubleTapZoom = viewModel::onDoubleTap,
             onCanvasTouchStart = { dockCollapseSignal++ },
             modifier = Modifier.fillMaxSize(),
@@ -192,6 +205,8 @@ fun EditorScreen(
                 onResize = { isResizeMode = true },
                 onGrowEdge = viewModel::growEdge,
                 onExport = { showExportDialog = true },
+                stylusOnly = viewModel.appPrefs.stylusOnly,
+                onStylusOnlyChange = { viewModel.updateAppPrefs(viewModel.appPrefs.copy(stylusOnly = it)) },
                 onCanvasColorClick = { showCanvasColorPicker = true },
                 paperStyle = viewModel.canvasSpec.paperStyle,
                 paperSpacing = viewModel.canvasSpec.paperSpacing,
@@ -262,5 +277,6 @@ fun EditorScreen(
                 )
             },
         )
+        }
     }
 }

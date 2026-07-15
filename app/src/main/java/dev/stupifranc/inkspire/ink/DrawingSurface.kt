@@ -118,14 +118,14 @@ fun DrawingSurface(
     symmetryConfig: SymmetryConfig,
     canvasSpec: CanvasSpec,
     viewport: Viewport,
+    stylusOnly: Boolean,
     awaitingCenterPlacement: Boolean,
     onStrokesFinished: (String, List<Stroke>) -> Unit,
     onErase: (Set<String>) -> Unit,
     onContainerSizeChanged: (Float, Float) -> Unit,
     onSymmetryCenterChanged: (Point) -> Unit,
     onPlaceCenter: (Point) -> Unit,
-    onPan: (dx: Float, dy: Float) -> Unit,
-    onZoom: (factor: Float, focal: Point) -> Unit,
+    onTransform: (panX: Float, panY: Float, zoom: Float, focal: Point) -> Unit,
     onDoubleTapZoom: (tapScreen: Point) -> Unit,
     onCanvasTouchStart: () -> Unit,
     modifier: Modifier = Modifier,
@@ -139,10 +139,10 @@ fun DrawingSurface(
     val onEraseState = rememberUpdatedState(onErase)
     val viewportState = rememberUpdatedState(viewport)
     val canvasSpecState = rememberUpdatedState(canvasSpec)
+    val stylusOnlyState = rememberUpdatedState(stylusOnly)
     val awaitingCenterPlacementState = rememberUpdatedState(awaitingCenterPlacement)
     val onPlaceCenterState = rememberUpdatedState(onPlaceCenter)
-    val onPanState = rememberUpdatedState(onPan)
-    val onZoomState = rememberUpdatedState(onZoom)
+    val onTransformState = rememberUpdatedState(onTransform)
     val onDoubleTapZoomState = rememberUpdatedState(onDoubleTapZoom)
     val onCanvasTouchStartState = rememberUpdatedState(onCanvasTouchStart)
     val brushFamilyState = rememberUpdatedState(currentBrushFamily)
@@ -259,11 +259,11 @@ fun DrawingSurface(
                             viewport = viewportState.value,
                             canvasSpec = canvasSpecState.value,
                             tapTracker = tapTracker,
+                            stylusOnly = stylusOnlyState.value,
                             awaitingCenterPlacement = awaitingCenterPlacementState.value,
                             onErase = onEraseState.value,
-                            onPan = onPanState.value,
-                            onZoom = onZoomState.value,
-                            onDoubleTapZoom = onDoubleTapZoomState.value,
+                            onTransform = { px, py, z, f -> onTransformState.value(px, py, z, f) },
+                            onDoubleTapZoom = { p -> onDoubleTapZoomState.value(p) },
                             onPlaceCenter = onPlaceCenterState.value,
                             onStrokeActiveChanged = { strokeInProgress = it },
                         )
@@ -433,10 +433,10 @@ private fun handleTouch(
     viewport: Viewport,
     canvasSpec: CanvasSpec,
     tapTracker: TapTracker,
+    stylusOnly: Boolean,
     awaitingCenterPlacement: Boolean,
     onErase: (Set<String>) -> Unit,
-    onPan: (Float, Float) -> Unit,
-    onZoom: (Float, Point) -> Unit,
+    onTransform: (panX: Float, panY: Float, zoom: Float, focal: Point) -> Unit,
     onDoubleTapZoom: (Point) -> Unit,
     onPlaceCenter: (Point) -> Unit,
     onStrokeActiveChanged: (Boolean) -> Unit,
@@ -449,7 +449,7 @@ private fun handleTouch(
         eraserTester.endSweep()
         tapTracker.lastTapUpTimeMs = 0L
         handPanState.active = false
-        return handlePanZoomTouch(event, panZoomState, onPan, onZoom)
+        return handlePanZoomTouch(event, panZoomState, onTransform)
     }
     if (awaitingCenterPlacement) {
         return handleCenterPlacementTouch(event, viewport, canvasSpec, onPlaceCenter)
@@ -468,7 +468,7 @@ private fun handleTouch(
             true
         }
         Tool.ERASER -> handleEraserTouch(event, entries, eraserTester, eraserPaddingPx, viewport, onErase)
-        Tool.PAN -> handleHandPanTouch(event, handPanState, onPan, tapTracker, onDoubleTapZoom)
+        Tool.PAN -> handleHandPanTouch(event, handPanState, onTransform, tapTracker, onDoubleTapZoom)
         Tool.PEN -> handlePenTouch(
             view,
             event,
@@ -478,6 +478,7 @@ private fun handleTouch(
             screenToWorld = screenToWorld,
             viewport = viewport,
             canvasSpec = canvasSpec,
+            stylusOnly = stylusOnly,
             onStrokeActiveChanged = onStrokeActiveChanged,
         )
     }
@@ -499,8 +500,7 @@ private fun handleCenterPlacementTouch(
 private fun handlePanZoomTouch(
     event: MotionEvent,
     state: PanZoomState,
-    onPan: (Float, Float) -> Unit,
-    onZoom: (Float, Point) -> Unit,
+    onTransform: (panX: Float, panY: Float, zoom: Float, focal: Point) -> Unit,
 ): Boolean {
     when (event.actionMasked) {
         MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
@@ -534,10 +534,14 @@ private fun handlePanZoomTouch(
             val prevDistance = hypot((state.lastBX - state.lastAX).toDouble(), (state.lastBY - state.lastAY).toDouble()).toFloat()
             val currDistance = hypot((bx - ax).toDouble(), (by - ay).toDouble()).toFloat()
 
-            onPan(currCenterX - prevCenterX, currCenterY - prevCenterY)
-            if (prevDistance > MIN_PINCH_DISTANCE_PX && currDistance > MIN_PINCH_DISTANCE_PX) {
-                onZoom(currDistance / prevDistance, Point(currCenterX, currCenterY))
+            val panX = currCenterX - prevCenterX
+            val panY = currCenterY - prevCenterY
+            val zoom = if (prevDistance > MIN_PINCH_DISTANCE_PX && currDistance > MIN_PINCH_DISTANCE_PX) {
+                currDistance / prevDistance
+            } else {
+                1f
             }
+            onTransform(panX, panY, zoom, Point(currCenterX, currCenterY))
 
             state.lastAX = ax
             state.lastAY = ay
@@ -565,7 +569,7 @@ private fun handlePanZoomTouch(
 private fun handleHandPanTouch(
     event: MotionEvent,
     state: SingleFingerPanState,
-    onPan: (Float, Float) -> Unit,
+    onTransform: (panX: Float, panY: Float, zoom: Float, focal: Point) -> Unit,
     tapTracker: TapTracker,
     onDoubleTapZoom: (Point) -> Unit,
 ): Boolean {
@@ -591,7 +595,7 @@ private fun handleHandPanTouch(
             }
             val x = event.getX(0)
             val y = event.getY(0)
-            onPan(x - state.lastX, y - state.lastY)
+            onTransform(x - state.lastX, y - state.lastY, 1f, Point(x, y))
             state.lastX = x
             state.lastY = y
             return true
@@ -617,8 +621,13 @@ private fun handlePenTouch(
     screenToWorld: Matrix,
     viewport: Viewport,
     canvasSpec: CanvasSpec,
+    stylusOnly: Boolean,
     onStrokeActiveChanged: (Boolean) -> Unit,
 ): Boolean {
+    if (stylusOnly && event.getToolType(event.actionIndex) != android.view.MotionEvent.TOOL_TYPE_STYLUS) {
+        return false
+    }
+    
     when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> {
             if (touchState.activeStrokeId != null) return false

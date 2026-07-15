@@ -10,19 +10,19 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.stupifranc.inkspire.data.DrawingRepository
-import dev.stupifranc.inkspire.data.GalleryPrefsStore
+import dev.stupifranc.inkspire.data.AppPrefsStore
+import dev.stupifranc.inkspire.model.AppPrefs
 import dev.stupifranc.inkspire.model.DrawingMeta
-import dev.stupifranc.inkspire.model.GalleryPrefs
 import java.io.File
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = DrawingRepository(File(application.filesDir, "drawings"))
-    private val prefsStore = GalleryPrefsStore(File(application.filesDir, "app_prefs"))
+    private val prefsStore = AppPrefsStore(File(application.filesDir, "app_prefs"))
 
     var drawings by mutableStateOf<List<DrawingMeta>>(emptyList())
         private set
 
-    var prefs by mutableStateOf(GalleryPrefs())
+    var prefs by mutableStateOf(AppPrefs())
         private set
 
     init {
@@ -30,7 +30,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         prefs = prefsStore.load()
     }
 
-    fun updatePrefs(newPrefs: GalleryPrefs) {
+    fun updatePrefs(newPrefs: AppPrefs) {
         prefs = newPrefs
         prefsStore.save(newPrefs)
     }
