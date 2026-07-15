@@ -39,7 +39,7 @@ Use a version catalog (`gradle/libs.versions.toml`). **No Room, no KSP, no Hilt*
 ## Architecture
 
 **Ink pipeline (canonical, per developer.android.com Ink API docs):**
-- **Wet layer**: `InProgressStrokesView` (`ink-authoring`) hosted via `AndroidView` — receives touch while pointer is down; front-buffered low latency on API 29+, automatic fallback below; motion prediction built in.
+- **Wet layer**: `InProgressStrokesView` (`ink-authoring`) hosted via `AndroidView` — receives touch while pointer is down; front-buffered low latency on API 29+, automatic fallback below. ~~motion prediction built in~~ **CORRECTED 2026-07-15: prediction is NOT built in.** Verified against the real 1.0.0 aar + POM: `ink-authoring` has no `androidx.input:input-motionprediction` dependency and zero predictor classes; it only *accepts* caller-supplied predicted events via `addToStroke(event, pointerId, strokeId, prediction)`. The app must wire `MotionEventPredictor` itself — see "Pen smoothness & anti-jitter plan" below.
 - **Dry layer**: custom `View` beneath it rendering finished strokes via `CanvasStrokeRenderer` (`ink-rendering`). On `InProgressStrokesFinishedListener`, strokes hand off wet→dry (call `removeFinishedStrokes` only after the dry layer has drawn them).
 - One **document↔screen transform** shared by both: set as `motionEventToWorldTransform` on the wet view; passed as the transform arg to `CanvasStrokeRenderer.draw()`.
 
@@ -221,6 +221,7 @@ The original HIGH PRIORITY section (for archival reference — superseded by the
 1. **Commit M8** (`m8: canvas navigation — deep zoom, dbl-tap toggle, hand tool, pan margin, symmetry center, fit-to-content, canvas color, auto-close panels`) — code-complete and gate-passing, just needs the commit per the plan's one-commit-per-milestone rule.
 2. **On-device pass, M5 + M7 + M8 together** (full checklists in each milestone's spec above) — the single biggest piece of debt in the project right now; three milestones' worth of UI has never been touched by a real finger.
 3. ~~**M6 remainder** — gradient pen (`core/GradientPen` + `GradientPenTest` first), stylus-only toggle, dark theme (make workspace/page colors theme-aware then; also resolves the light-editor↔dark-gallery clash), app icon, haptic ticks.~~ **DONE**
+4. **Pen smoothness & anti-jitter — Keep parity round 2** (added 2026-07-15): motion prediction was NEVER wired (the plan's "prediction built in" claim was false — corrected in the Architecture section), `requestUnbufferedDispatch` missing, all three `CanvasStrokeRenderer.draw` call sites violate the transform contract (AA computed at scale 1), and brush epsilon 0.1 is 12× too coarse for 32× zoom. Full prescriptive spec in the "Pen smoothness & anti-jitter plan" section near the end of this file — follow it step by step.
 
 **Working agreements that remain in force:** JVM tests before implementation for `core/`+`data/` logic; one commit per milestone; verify `androidx.ink` APIs against the jars in `~/.gradle/caches/modules-2/files-2.1/androidx.ink/` (fetched doc summaries have hallucinated APIs twice); record every deviation here.
 
@@ -334,6 +335,71 @@ Follow this work in order. The goal is not "similar enough"; the goal is a repro
    - [x] If parity is achieved: log the exact verified date, device model, Android version, and which behaviors were matched. (Verified by user on device, 2026-07-15. StockBrushes.marker() provides satisfactory speed-sensitive parity).
    - [x] If parity is only approximate: state which parts match, which parts intentionally differ, and why.
    - [x] Never again use "same as Google Keep" as a blanket statement unless the above acceptance pass was completed after the relevant code change.
+
+## Pen smoothness & anti-jitter plan — Keep parity round 2 (added 2026-07-15, jar-verified code review)
+
+**Why this section exists.** Round 1 (above) fixed brush *identity* (speed-sensitive `StockBrushes.marker()` pen, user-verified on device). This round fixes stroke *quality*: smoothness, jitter, and latency. A review verified against the actual 1.0.0 artifacts in `~/.gradle/caches/modules-2/files-2.1/androidx.ink/` (bytecode, POMs — not fetched docs) found **three real defects and one missing Keep-parity feature**. Google Keep's inking feels smooth because of three things this app currently lacks or does wrong: (a) motion-predicted wet strokes, (b) unbuffered input dispatch, (c) correct renderer transform contract. Fix them in the order below. **This is a prescriptive spec — follow it literally; every deviation goes in the deviations log.**
+
+**Ground truth established by this review (do not re-derive, do not trust fetched doc summaries over this):**
+- `InProgressStrokesView.addToStroke(MotionEvent, pointerId, strokeId, prediction: MotionEvent?)` — 4th param is a **caller-supplied prediction event, default null**. Confirmed via `javap` on `ink-authoring.aar` `classes.jar`. The library has NO internal predictor (POM has no `androidx.input` dep; zero `*redict*` classes in the aar; `InProgressStrokesManager` bytecode has `predictedInputs` plumbing that is only fed by that 4th param). **The app passes nothing → wet strokes trail the finger by the full pipeline latency. Keep predicts.**
+- `CanvasStrokeRenderer.draw(canvas, stroke, strokeToScreenTransform)` — the transform argument is **not** just positioning: `CanvasMeshRenderer` bytecode reads `xScale`/`yScale` off it to size anti-aliasing/detail in *screen* space. The official pattern (developer.android.com "Draw a stroke" page) is `canvas.concat(worldToScreen)` **and** pass that **same matrix** as `strokeToScreenTransform`. The app concats but passes **identity** in all three call sites — the renderer AA's for scale 1, then the canvas scales the result by up to 32× (blurry edges zoomed in, aliased/shimmering edges zoomed out — this is a direct "strokes aren't smooth" defect).
+- Brush **epsilon** (`Brush.createWithColorIntArgb(..., epsilon)`) is a world-space quantization distance. Official guidance (developer.android.com "Epsilon and coordinate system"): keep epsilon ≤ **0.25 ÷ max-zoom** world units so rounding stays ≤ 1 px at max zoom. This app: epsilon `0.1f` (`ink/BrushMapping.kt`), `Viewport.MAX_SCALE = 32f` → up to **3.2 px quantization at 32× zoom** → visibly polygonal/jittery lines exactly where the user zooms in to do fine work. Budget says 0.25/32 ≈ `0.0078f`.
+- `View.requestUnbufferedDispatch(event)` is never called. Without it, touch events are batched to the display vsync. Historical samples inside batched MOVEs are still consumed by `addToStroke`, so *point density* is preserved — but events arrive up to a frame late, which adds directly to wet-stroke lag. The official low-latency inking samples call it on `ACTION_DOWN`.
+
+**Scope guard (as important as the fixes):**
+- Do NOT add any app-side input smoothing/filtering (moving averages, Bézier fitting, point decimation). `androidx.ink` already smooths internally; double-smoothing produces the exact wobble/lag this plan is eliminating.
+- Do NOT touch brush family mappings (`PEN→marker()` etc. — user-verified round 1), `core/` (nothing here is pure math), the wet→dry handoff, or anything previously reverted (no `CanvasGrowth`, no `detectTransformGestures`).
+- Do NOT delay `ACTION_DOWN` stroke start for any reason (standing rule from round 1, item 6).
+
+### Work order
+
+**Step 1 — Renderer transform contract (pure fix, no new deps, do first).**
+Three call sites pass `identity` to `renderer.draw(...)` while the canvas is concat'd with the real transform. In each, pass the **same matrix that was concat'd** instead of `identity`:
+1. `ink/DrawingSurface.kt` (~line 204–213, dry layer): `nativeCanvas.concat(worldToScreen)` … change `renderer.draw(nativeCanvas, entry.stroke, identity)` → `renderer.draw(nativeCanvas, entry.stroke, worldToScreen)`. Delete the now-unused `identity` val.
+2. `ui/components/Minimap.kt` (~line 78–82): same change with its own `worldToScreen`.
+3. `ink/CanvasExporter.kt` (~line 39–43): it calls `canvas.scale(scale, scale)` then draws with `identity`. Build the matrix explicitly — `val scaleMatrix = Matrix().apply { setScale(scale, scale) }` — keep `canvas.scale(...)` (or replace with `canvas.concat(scaleMatrix)`, equivalent), and pass `scaleMatrix` to `renderer.draw`. This makes ×2/×4 PNG exports render AA at true output resolution instead of upscaled 1× AA.
+Gate: `./gradlew test assembleDebug` (no test changes expected — this is native-backed glue, trap #1). On-device check comes in step 6.
+
+**Step 2 — Unbuffered dispatch (one line).**
+In `ink/DrawingSurface.kt` `handlePenTouch`, inside the `ACTION_DOWN` branch, immediately after the `canvasSpec.contains(...)` gate passes (i.e. only when a stroke actually starts), add:
+```kotlin
+view.requestUnbufferedDispatch(event)
+```
+It applies per-gesture (resets on stream end), so per-DOWN is correct. Do not add it to eraser/pan paths in this pass — pen scope only.
+
+**Step 3 — Motion prediction (the Keep-parity feature; the only new dependency).**
+1. Find the current `androidx.input:input-motionprediction` version on Google Maven (check `https://maven.google.com/web/index.html#androidx.input` or `curl https://dl.google.com/android/maven2/androidx/input/group-index.xml`). Expect a `1.0.0-beta0x`; **pin whatever actually exists — do not invent a version** — and record it + this rationale in the deviations log (the pinned-versions table forbids undocumented deps).
+2. Before writing code, verify the API against the downloaded artifact with `javap` (standing rule): expected surface is `MotionEventPredictor.newInstance(view: View)`, `.record(event: MotionEvent)`, `.predict(): MotionEvent?`.
+3. In `DrawingSurface`'s `AndroidView` factory block, create one predictor per view: `val predictor = MotionEventPredictor.newInstance(this)` (capture it in the touch-listener closure, alongside the existing state objects — thread the reference into `handleTouch`/`handlePenTouch` as a parameter, matching how `tapTracker` etc. are passed).
+4. In `handlePenTouch`: call `predictor.record(event)` as the **first statement** for every event that reaches the pen path (DOWN/MOVE/UP — real events only; **never** record a predicted event). In the `ACTION_MOVE` branch replace the plain `addToStroke` call with:
+```kotlin
+val predicted = predictor.predict()
+try {
+    view.addToStroke(event, touchState.activePointerId, strokeId, predicted)
+} finally {
+    predicted?.recycle()
+}
+```
+`predict()` returning null is normal early in a stroke — the 4th param's default is null anyway.
+5. Kill switch: if prediction visibly overshoots on sharp direction reversals worse than Keep does (checklist below), the revert is passing `null` instead of `predicted` — one line, keep the plumbing.
+
+**Step 4 — Epsilon for deep zoom.**
+In `ink/BrushMapping.kt` change `private const val DEFAULT_EPSILON = 0.1f` → `0.0078125f` with the comment `// 0.25 world units ÷ Viewport.MAX_SCALE (32): keeps quantization ≤ 1 px at max zoom, per the Ink epsilon guidance`. Notes for the coding model: (a) this affects tessellation cost — if on-device fast-scribble latency regresses (step 6), fall back to `0.025f` (clean up to 10× zoom) and record the tradeoff; (b) persisted drawings rebuild their `Brush` via `toInkBrush()` on load, so old strokes pick up the new epsilon automatically — no migration; (c) do NOT try to make epsilon dynamic per zoom level — the guidance explicitly requires world unit and epsilon fixed for the app's lifetime.
+
+**Step 5 — Small consistency fixes (bundle into the same commit).**
+1. `handlePenTouch`'s stylus-only gate (~line 627) rejects `TOOL_TYPE_ERASER`, but the deviations-log entry for Stylus-Only Mode says stylus **or** stylus-eraser are accepted. Make the code match the log: `val tt = event.getToolType(event.actionIndex); if (stylusOnly && tt != TOOL_TYPE_STYLUS && tt != TOOL_TYPE_ERASER) return false`.
+2. Fix the garbled/stale comment above the `contains` gate in `handlePenTouch` ("Only start real ink outside the page boundary is a no-op…" — and its double-tap-detection claim is stale since double-tap moved to `Tool.NONE`/`Tool.PAN`). Replace with one true sentence: starting outside the page is a no-op but the touch is still consumed so the gesture doesn't leak elsewhere.
+
+**Step 6 — Gate, commit, on-device acceptance (side-by-side vs Keep, same device/hand/day).**
+- `./gradlew test assembleDebug` green (expect 143/143 — no new JVM tests; every change in this section is native-backed Android/ink glue per trap #1; there is deliberately nothing pure-Kotlin to extract here, do not invent tests).
+- One commit: `pen: keep-parity round 2 — motion prediction, unbuffered dispatch, renderer transform fix, deep-zoom epsilon`. Commit message must state what is verified on-device vs. inference, per round 1 rule 1.
+- On-device checklist (additions to round 1's step-9 matrix; run the full matrix again):
+  - **Wet-stroke lag**: fast scribble + fast handwriting — the wet stroke tip should hug the finger noticeably closer than the pre-change build (prediction + unbuffered dispatch). Compare against Keep directly.
+  - **Prediction overshoot**: sharp zigzag reversals — brief tip overshoot that self-corrects within a frame is normal (Keep does it too); persistent hooks/spikes at reversal points = overshoot regression → apply step 3's kill switch and record.
+  - **Zoomed smoothness**: zoom to 8× and 32×, draw slow curves — edges must be crisp (step 1) and curves round, not polygonal (step 4). Also inspect *pre-existing* strokes at 32× (epsilon reload effect).
+  - **Export sharpness**: ×4 PNG export — stroke edges sharp at 100% pixel view (step 1's exporter fix).
+  - **No regressions**: first stroke still appears with no priming tap (`Tool.NONE` fix intact); two-finger pinch mid-stroke still cancels cleanly; eraser and stylus-only toggle still behave; fast scribble shows no new latency (step 4's epsilon cost).
+- Only after this pass may any "matches Google Keep" language be used, and only per round 1 rule 10's honesty requirements.
 
 ## Verification
 
