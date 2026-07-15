@@ -17,7 +17,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private const val THUMBNAIL_MAX_DIMENSION_PX = 320f
+private const val THUMBNAIL_TARGET_SHORT_SIDE_PX = 480f
+private const val THUMBNAIL_MAX_AREA_PX = 1024f * 1024f // 1 Megapixel
+private const val THUMBNAIL_MAX_DIMENSION_PX = 4096f // Hardware texture limit safety
 
 /** Renders the full document (not just the visible viewport) and saves it as a PNG in the gallery. */
 object CanvasExporter {
@@ -42,10 +44,26 @@ object CanvasExporter {
         return bitmap
     }
 
-    /** Small preview render for gallery thumbnails, downscaled to fit within [THUMBNAIL_MAX_DIMENSION_PX]. */
+    /** Small preview render for gallery thumbnails, downscaled to ensure crisp rendering while preventing OOM. */
     fun renderThumbnail(canvasSpec: CanvasSpec, strokes: List<StrokeEntry>): Bitmap {
-        val longestSide = maxOf(canvasSpec.width, canvasSpec.height, 1f)
-        val scale = (THUMBNAIL_MAX_DIMENSION_PX / longestSide).coerceAtMost(1f)
+        val shortestSide = minOf(canvasSpec.width, canvasSpec.height).coerceAtLeast(1f)
+        var scale = THUMBNAIL_TARGET_SHORT_SIDE_PX / shortestSide
+        
+        // Ensure the area doesn't exceed 1 Megapixel
+        val area = (canvasSpec.width * scale) * (canvasSpec.height * scale)
+        if (area > THUMBNAIL_MAX_AREA_PX) {
+            scale = kotlin.math.sqrt(THUMBNAIL_MAX_AREA_PX / (canvasSpec.width * canvasSpec.height))
+        }
+        
+        // Ensure the longest side doesn't exceed hardware texture limits
+        val longestSide = maxOf(canvasSpec.width, canvasSpec.height).coerceAtLeast(1f)
+        if (longestSide * scale > THUMBNAIL_MAX_DIMENSION_PX) {
+            scale = THUMBNAIL_MAX_DIMENSION_PX / longestSide
+        }
+        
+        // Never upscale beyond 1x (if the canvas is tiny, leave it tiny)
+        scale = scale.coerceAtMost(1f)
+
         return renderBitmap(canvasSpec, strokes, scale)
     }
 
