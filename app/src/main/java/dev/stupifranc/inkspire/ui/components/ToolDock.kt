@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -94,6 +97,8 @@ fun ToolDock(
     onResize: () -> Unit,
     onGrowEdge: (CanvasEdge) -> Unit,
     onExport: () -> Unit,
+    rotationEnabled: Boolean,
+    onToggleRotation: () -> Unit,
     stylusOnly: Boolean,
     onStylusOnlyChange: (Boolean) -> Unit,
     onCanvasColorClick: () -> Unit,
@@ -157,6 +162,8 @@ fun ToolDock(
                             canvasColorArgb = canvasColorArgb,
                             paperStyle = paperStyle,
                             paperSpacing = paperSpacing,
+                            rotationEnabled = rotationEnabled,
+                            onToggleRotation = onToggleRotation,
                             stylusOnly = stylusOnly,
                             onExport = { toggle(DockExpansion.NONE); onExport() },
                             onStylusOnlyChange = onStylusOnlyChange,
@@ -311,6 +318,8 @@ private fun MorePanel(
     canvasColorArgb: Int,
     paperStyle: PaperStyle,
     paperSpacing: Float,
+    rotationEnabled: Boolean,
+    onToggleRotation: () -> Unit,
     stylusOnly: Boolean,
     onExport: () -> Unit,
     onStylusOnlyChange: (Boolean) -> Unit,
@@ -321,6 +330,8 @@ private fun MorePanel(
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             DockIconButton(selected = false, onClick = onExport) { tint -> ExportIcon(tint) }
+            DockDivider()
+            DockIconButton(selected = rotationEnabled, onClick = onToggleRotation) { tint -> androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Rounded.Refresh, contentDescription = "Rotation", tint = tint, modifier = Modifier.size(24.dp)) }
             DockDivider()
             DockIconButton(selected = stylusOnly, onClick = { onStylusOnlyChange(!stylusOnly) }) { tint -> StylusIcon(tint) }
             DockDivider()

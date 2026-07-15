@@ -120,14 +120,15 @@ fun DrawingSurface(
     canvasSpec: CanvasSpec,
     viewport: Viewport,
     stylusOnly: Boolean,
+    isSymmetryCenterLocked: Boolean,
     awaitingCenterPlacement: Boolean,
     onStrokesFinished: (String, List<Stroke>) -> Unit,
     onErase: (Set<String>) -> Unit,
     onContainerSizeChanged: (Float, Float) -> Unit,
     onSymmetryCenterChanged: (Point) -> Unit,
     onPlaceCenter: (Point) -> Unit,
-    onTransform: (panX: Float, panY: Float, zoom: Float, focal: Point) -> Unit,
-    onDoubleTapZoom: (tapScreen: Point) -> Unit,
+    onTransform: (panX: Float, panY: Float, zoom: Float, rotationDelta: Float, focal: Point) -> Unit,
+    onDoubleTapZoom: (Point) -> Unit,
     onCanvasTouchStart: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -264,7 +265,7 @@ fun DrawingSurface(
                             stylusOnly = stylusOnlyState.value,
                             awaitingCenterPlacement = awaitingCenterPlacementState.value,
                             onErase = onEraseState.value,
-                            onTransform = { px, py, z, f -> onTransformState.value(px, py, z, f) },
+                            onTransform = { px, py, z, r, f -> onTransformState.value(px, py, z, r, f) },
                             onDoubleTapZoom = { p -> onDoubleTapZoomState.value(p) },
                             onPlaceCenter = onPlaceCenterState.value,
                             onStrokeActiveChanged = { strokeInProgress = it },
@@ -310,14 +311,16 @@ fun DrawingSurface(
                         )
                     }
                     .size(CENTER_HANDLE_TOUCH_SIZE)
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            val scale = viewportState.value.scale
-                            val current = symmetryCenterState.value
-                            onSymmetryCenterChangedState.value(
-                                Point(current.x + dragAmount.x / scale, current.y + dragAmount.y / scale),
-                            )
+                    .pointerInput(isSymmetryCenterLocked) {
+                        if (!isSymmetryCenterLocked) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                val scale = viewportState.value.scale
+                                val current = symmetryCenterState.value
+                                onSymmetryCenterChangedState.value(
+                                    Point(current.x + dragAmount.x / scale, current.y + dragAmount.y / scale),
+                                )
+                            }
                         }
                     },
             ) {
@@ -439,7 +442,7 @@ private fun handleTouch(
     stylusOnly: Boolean,
     awaitingCenterPlacement: Boolean,
     onErase: (Set<String>) -> Unit,
-    onTransform: (panX: Float, panY: Float, zoom: Float, focal: Point) -> Unit,
+    onTransform: (panX: Float, panY: Float, zoom: Float, rotationDelta: Float, focal: Point) -> Unit,
     onDoubleTapZoom: (Point) -> Unit,
     onPlaceCenter: (Point) -> Unit,
     onStrokeActiveChanged: (Boolean) -> Unit,
@@ -505,7 +508,7 @@ private fun handleCenterPlacementTouch(
 private fun handlePanZoomTouch(
     event: MotionEvent,
     state: PanZoomState,
-    onTransform: (panX: Float, panY: Float, zoom: Float, focal: Point) -> Unit,
+    onTransform: (panX: Float, panY: Float, zoom: Float, rotationDelta: Float, focal: Point) -> Unit,
 ): Boolean {
     when (event.actionMasked) {
         MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
@@ -546,7 +549,14 @@ private fun handlePanZoomTouch(
             } else {
                 1f
             }
-            onTransform(panX, panY, zoom, Point(currCenterX, currCenterY))
+            
+            val angleA = kotlin.math.atan2((state.lastBY - state.lastAY).toDouble(), (state.lastBX - state.lastAX).toDouble())
+            val angleB = kotlin.math.atan2((by - ay).toDouble(), (bx - ax).toDouble())
+            var rotationDelta = (angleB - angleA).toFloat()
+            if (rotationDelta > kotlin.math.PI) rotationDelta -= (2 * kotlin.math.PI).toFloat()
+            if (rotationDelta < -kotlin.math.PI) rotationDelta += (2 * kotlin.math.PI).toFloat()
+
+            onTransform(panX, panY, zoom, rotationDelta, Point(currCenterX, currCenterY))
 
             state.lastAX = ax
             state.lastAY = ay
@@ -574,7 +584,7 @@ private fun handlePanZoomTouch(
 private fun handleHandPanTouch(
     event: MotionEvent,
     state: SingleFingerPanState,
-    onTransform: (panX: Float, panY: Float, zoom: Float, focal: Point) -> Unit,
+    onTransform: (panX: Float, panY: Float, zoom: Float, rotationDelta: Float, focal: Point) -> Unit,
     tapTracker: TapTracker,
     onDoubleTapZoom: (Point) -> Unit,
 ): Boolean {
@@ -600,7 +610,7 @@ private fun handleHandPanTouch(
             }
             val x = event.getX(0)
             val y = event.getY(0)
-            onTransform(x - state.lastX, y - state.lastY, 1f, Point(x, y))
+            onTransform(x - state.lastX, y - state.lastY, 1f, 0f, Point(x, y))
             state.lastX = x
             state.lastY = y
             return true

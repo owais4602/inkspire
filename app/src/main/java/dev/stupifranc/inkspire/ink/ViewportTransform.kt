@@ -8,7 +8,11 @@ import dev.stupifranc.inkspire.core.Viewport
  * (verified against the real 1.0.0 API: it maps world/document coordinates to screen coordinates).
  */
 fun Viewport.toWorldToScreenMatrix(): Matrix =
-    Matrix().apply { setValues(floatArrayOf(scale, 0f, panX, 0f, scale, panY, 0f, 0f, 1f)) }
+    Matrix().apply {
+        postScale(scale, scale)
+        postRotate(Math.toDegrees(rotation.toDouble()).toFloat())
+        postTranslate(panX, panY)
+    }
 
 /**
  * The transform argument for [androidx.ink.authoring.InProgressStrokesView.startStroke]

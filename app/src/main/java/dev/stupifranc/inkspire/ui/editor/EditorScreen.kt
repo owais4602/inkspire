@@ -8,6 +8,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -125,6 +126,7 @@ fun EditorScreen(
             canvasSpec = viewModel.canvasSpec,
             viewport = viewModel.viewport,
             stylusOnly = viewModel.appPrefs.stylusOnly,
+            isSymmetryCenterLocked = viewModel.symmetryCenterLocked,
             awaitingCenterPlacement = viewModel.awaitingCenterPlacement,
             onStrokesFinished = viewModel::onStrokesFinished,
             onErase = viewModel::eraseHits,
@@ -165,6 +167,17 @@ fun EditorScreen(
                     .padding(16.dp),
             )
 
+            if (viewModel.symmetryEnabled) {
+                dev.stupifranc.inkspire.ui.components.SymmetryFloatingMenu(
+                    isLocked = viewModel.symmetryCenterLocked,
+                    onToggleLock = viewModel::toggleSymmetryCenterLocked,
+                    onReset = viewModel::resetSymmetryCenter,
+                    onPlace = viewModel::toggleCenterPlacementArmed,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 90.dp)
+                )
+            }
             Minimap(
                 canvasSpec = viewModel.canvasSpec,
                 viewport = viewModel.viewport,
@@ -205,6 +218,8 @@ fun EditorScreen(
                 onResize = { isResizeMode = true },
                 onGrowEdge = viewModel::growEdge,
                 onExport = { showExportDialog = true },
+                rotationEnabled = viewModel.rotationEnabled,
+                onToggleRotation = viewModel::toggleRotationEnabled,
                 stylusOnly = viewModel.appPrefs.stylusOnly,
                 onStylusOnlyChange = { viewModel.updateAppPrefs(viewModel.appPrefs.copy(stylusOnly = it)) },
                 onCanvasColorClick = { showCanvasColorPicker = true },

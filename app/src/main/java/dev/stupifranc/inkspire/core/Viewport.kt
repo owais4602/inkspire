@@ -10,22 +10,54 @@ data class Viewport(
     val scale: Float = 1f,
     val panX: Float = 0f,
     val panY: Float = 0f,
+    val rotation: Float = 0f,
 ) {
-    fun documentToScreen(point: Point): Point = Point(point.x * scale + panX, point.y * scale + panY)
+    fun documentToScreen(point: Point): Point {
+        val sx = point.x * scale
+        val sy = point.y * scale
+        val rx = sx * kotlin.math.cos(rotation) - sy * kotlin.math.sin(rotation)
+        val ry = sx * kotlin.math.sin(rotation) + sy * kotlin.math.cos(rotation)
+        return Point(rx + panX, ry + panY)
+    }
 
-    fun screenToDocument(point: Point): Point = Point((point.x - panX) / scale, (point.y - panY) / scale)
+    fun screenToDocument(point: Point): Point {
+        val tx = point.x - panX
+        val ty = point.y - panY
+        val rx = tx * kotlin.math.cos(-rotation) - ty * kotlin.math.sin(-rotation)
+        val ry = tx * kotlin.math.sin(-rotation) + ty * kotlin.math.cos(-rotation)
+        return Point(rx / scale, ry / scale)
+    }
 
     fun pannedBy(dx: Float, dy: Float): Viewport = copy(panX = panX + dx, panY = panY + dy)
 
-    /** Zooms by [factor] (clamped to [MIN_SCALE]..[MAX_SCALE]) while keeping [focal] fixed on screen. */
-    fun zoomedBy(factor: Float, focal: Point): Viewport {
-        val newScale = (scale * factor).coerceIn(MIN_SCALE, MAX_SCALE)
+    /** Transforms by [panDeltaX], [panDeltaY], [zoomFactor], and [rotationDelta] while keeping [focal] fixed on screen. */
+    fun transformBy(panDeltaX: Float, panDeltaY: Float, zoomFactor: Float, rotationDelta: Float, focal: Point): Viewport {
+        val newScale = (scale * zoomFactor).coerceIn(MIN_SCALE, MAX_SCALE)
         val applied = newScale / scale
+        val newRotation = rotation + rotationDelta
+
+        // Move focal point back to origin
+        val fx = focal.x - panX
+        val fy = focal.y - panY
+        
+        // Scale and rotate the focal vector
+        val sx = fx * applied
+        val sy = fy * applied
+        val rx = sx * kotlin.math.cos(rotationDelta) - sy * kotlin.math.sin(rotationDelta)
+        val ry = sx * kotlin.math.sin(rotationDelta) + sy * kotlin.math.cos(rotationDelta)
+        
+        // The new pan should place the transformed focal vector back at the screen focal point + panDelta
         return copy(
             scale = newScale,
-            panX = focal.x - (focal.x - panX) * applied,
-            panY = focal.y - (focal.y - panY) * applied,
+            rotation = newRotation,
+            panX = focal.x + panDeltaX - rx.toFloat(),
+            panY = focal.y + panDeltaY - ry.toFloat(),
         )
+    }
+
+    /** Zooms by [factor] (clamped to [MIN_SCALE]..[MAX_SCALE]) while keeping [focal] fixed on screen. */
+    fun zoomedBy(factor: Float, focal: Point): Viewport {
+        return transformBy(0f, 0f, factor, 0f, focal)
     }
 
     /**

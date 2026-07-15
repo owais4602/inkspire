@@ -97,6 +97,10 @@ class EditorViewModel(application: Application, private val drawingId: String) :
 
     var symmetryEnabled by mutableStateOf(false)
         private set
+    var symmetryCenterLocked by mutableStateOf(false)
+        private set
+    var rotationEnabled by mutableStateOf(false)
+        private set
     var symmetrySectors by mutableStateOf(DEFAULT_SYMMETRY_SECTORS)
         private set
     var symmetryMirror by mutableStateOf(false)
@@ -139,6 +143,14 @@ class EditorViewModel(application: Application, private val drawingId: String) :
     fun toggleSymmetryEnabled() {
         symmetryEnabled = !symmetryEnabled
         if (!symmetryEnabled) awaitingCenterPlacement = false
+    }
+
+    fun toggleSymmetryCenterLocked() {
+        symmetryCenterLocked = !symmetryCenterLocked
+    }
+
+    fun toggleRotationEnabled() {
+        rotationEnabled = !rotationEnabled
     }
 
     fun changeSymmetrySectors(sectors: Int) {
@@ -193,10 +205,10 @@ class EditorViewModel(application: Application, private val drawingId: String) :
     private fun contentUnion(): BoundingBox =
         ContentBounds.union(collection.entries.mapNotNull { it.boundingBox() }, canvasSpec.width, canvasSpec.height)
 
-    fun transformBy(panX: Float, panY: Float, zoom: Float, focal: Point) {
-        val panned = viewport.pannedBy(panX, panY)
-        val zoomed = if (zoom != 1f) panned.zoomedBy(zoom, focal) else panned
-        viewport = zoomed.clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight, panMargin())
+    fun transformBy(panX: Float, panY: Float, zoom: Float, rotationDelta: Float, focal: Point) {
+        val appliedRotation = if (rotationEnabled) rotationDelta else 0f
+        val transformed = viewport.transformBy(panX, panY, zoom, appliedRotation, focal)
+        viewport = transformed.clampedTo(canvasSpec.width, canvasSpec.height, containerWidth, containerHeight, panMargin())
     }
 
     /** Always fits *everything* — the page union'd with the drawing's content bounds, not just the page. */
