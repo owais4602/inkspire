@@ -109,6 +109,21 @@ import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.gestures.scrollBy
+import kotlinx.coroutines.launch
+import dev.stupifranc.inkspire.core.ItemBox
+import dev.stupifranc.inkspire.core.reorderTarget
+
 // Minimal, premium, zero-chroma gallery: strict monochrome tonal sets, no gradients. The editor stays
 // light; this palette is scoped to the gallery alone via a local MaterialTheme. Wall tone (dark/light)
 // is user-selectable via the customization sheet — dark is the default.
@@ -199,6 +214,14 @@ fun GalleryScreen(
     var renameTarget by remember { mutableStateOf<DrawingMeta?>(null) }
     var showCustomizeSheet by remember { mutableStateOf(false) }
     var focusedDrawingId by remember { mutableStateOf<String?>(null) }
+    
+    val gridState = rememberLazyStaggeredGridState()
+    var draggedId by remember { mutableStateOf<String?>(null) }
+    val dragOffset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    var dropTargetId by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
 
     MaterialTheme(colorScheme = galleryColorScheme(tokens)) {
         Box(
@@ -220,6 +243,7 @@ fun GalleryScreen(
                 }
             } else {
                 LazyVerticalStaggeredGrid(
+                    state = gridState,
                     columns = StaggeredGridCells.Adaptive(minSize = prefs.thumbSize.minCellDp.dp),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
@@ -239,55 +263,114 @@ fun GalleryScreen(
                         )
                     }
                     items(viewModel.drawings, key = { it.id }) { meta ->
-                        var cumulativeDragX by remember { mutableStateOf(0f) }
-                        var cumulativeDragY by remember { mutableStateOf(0f) }
+                        val isDragged = draggedId == meta.id
+                        val isDropTarget = dropTargetId == meta.id
+                        
+                        val liftScale by animateFloatAsState(if (isDragged) 1.06f else 1f, spring(), label = "scale")
+                        val liftElevation by animateDpAsState(if (isDragged) 12.dp else 0.dp, spring(), label = "elevation")
+                        val targetScale by animateFloatAsState(if (isDropTarget && !isDragged) 0.94f else 1f, label = "targetScale")
+                        
+                        val cornerShape = if (meta.shape == CanvasShape.RECTANGLE) {
+                            RoundedCornerShape(prefs.cornerStyle.radiusDp.dp)
+                        } else {
+                            canvasOutlineShape(meta.shape)
+                        }
                         
                         Box(modifier = Modifier
                             .animateItem()
+                            .zIndex(if (isDragged) 1f else 0f)
+                            .graphicsLayer {
+                                if (isDragged) {
+                                    translationX = dragOffset.value.x
+                                    translationY = dragOffset.value.y
+                                    scaleX = liftScale
+                                    scaleY = liftScale
+                                    shadowElevation = liftElevation.toPx()
+                                    alpha = 0.9f
+                                } else {
+                                    scaleX = targetScale
+                                    scaleY = targetScale
+                                }
+                            }
                             .pointerInput(meta.id) {
+                                var dragStart = Offset.Zero
                                 detectDragGesturesAfterLongPress(
-                                    onDragStart = { 
-                                        focusedDrawingId = meta.id
-                                        cumulativeDragX = 0f
-                                        cumulativeDragY = 0f
+                                    onDragStart = { startPosition -> 
+                                        draggedId = meta.id
+                                        dragStart = startPosition
+                                        scope.launch { dragOffset.snapTo(Offset.Zero) }
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     },
                                     onDrag = { change, dragAmount ->
                                         change.consume()
-                                        if (focusedDrawingId == meta.id) {
-                                            focusedDrawingId = null
-                                        }
-                                        cumulativeDragX += dragAmount.x
-                                        cumulativeDragY += dragAmount.y
+                                        scope.launch { dragOffset.snapTo(dragOffset.value + dragAmount) }
                                         
-                                        val currentIndex = viewModel.drawings.indexOfFirst { it.id == meta.id }
-                                        if (currentIndex == -1) return@detectDragGesturesAfterLongPress
+                                        val layoutInfo = gridState.layoutInfo
+                                        val visibleItems = layoutInfo.visibleItemsInfo
                                         
-                                        if (cumulativeDragX > 150f && currentIndex < viewModel.drawings.lastIndex) {
-                                            viewModel.reorderDrawings(currentIndex, currentIndex + 1)
-                                            cumulativeDragX = 0f
-                                        } else if (cumulativeDragX < -150f && currentIndex > 0) {
-                                            viewModel.reorderDrawings(currentIndex, currentIndex - 1)
-                                            cumulativeDragX = 0f
-                                        }
-                                        
-                                        if (cumulativeDragY > 200f && currentIndex < viewModel.drawings.lastIndex - 1) {
-                                            viewModel.reorderDrawings(currentIndex, minOf(currentIndex + 2, viewModel.drawings.lastIndex))
-                                            cumulativeDragY = 0f
-                                        } else if (cumulativeDragY < -200f && currentIndex > 1) {
-                                            viewModel.reorderDrawings(currentIndex, maxOf(currentIndex - 2, 0))
-                                            cumulativeDragY = 0f
+                                        val myItem = visibleItems.find { it.key == meta.id }
+                                        if (myItem != null) {
+                                            val fingerX = myItem.offset.x + dragStart.x + dragOffset.value.x
+                                            val fingerY = myItem.offset.y + dragStart.y + dragOffset.value.y
+                                            
+                                            val boxes = visibleItems
+                                                .filter { it.key is String && viewModel.drawings.any { d -> d.id == it.key } }
+                                                .map {
+                                                    ItemBox(
+                                                        key = it.key as String,
+                                                        left = it.offset.x.toFloat(),
+                                                        top = it.offset.y.toFloat(),
+                                                        width = it.size.width.toFloat(),
+                                                        height = it.size.height.toFloat()
+                                                    )
+                                                }
+                                            
+                                            val newTarget = reorderTarget(fingerX, fingerY, boxes, meta.id)
+                                            if (newTarget != dropTargetId && newTarget != null) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            }
+                                            dropTargetId = newTarget
+                                            
+                                            val topBound = layoutInfo.viewportStartOffset.toFloat()
+                                            val bottomBound = layoutInfo.viewportEndOffset.toFloat()
+                                            val edgeThreshold = with(density) { 64.dp.toPx() }
+                                            if (fingerY < topBound + edgeThreshold) {
+                                                scope.launch { gridState.scrollBy(-16f) }
+                                            } else if (fingerY > bottomBound - edgeThreshold) {
+                                                scope.launch { gridState.scrollBy(16f) }
+                                            }
                                         }
                                     },
                                     onDragEnd = {
-                                        cumulativeDragX = 0f
-                                        cumulativeDragY = 0f
+                                        if (dragOffset.value == Offset.Zero) {
+                                            focusedDrawingId = meta.id
+                                            draggedId = null
+                                            dropTargetId = null
+                                        } else {
+                                            if (dropTargetId != null) {
+                                                viewModel.dropOnto(meta.id, dropTargetId!!)
+                                                draggedId = null
+                                                dropTargetId = null
+                                            } else {
+                                                scope.launch { 
+                                                    dragOffset.animateTo(Offset.Zero, spring(dampingRatio = 0.7f))
+                                                    draggedId = null
+                                                }
+                                            }
+                                        }
                                     },
                                     onDragCancel = {
-                                        cumulativeDragX = 0f
-                                        cumulativeDragY = 0f
+                                        scope.launch { 
+                                            dragOffset.animateTo(Offset.Zero, spring(dampingRatio = 0.7f))
+                                            draggedId = null
+                                            dropTargetId = null
+                                        }
                                     }
                                 )
                             }
+                            .then(
+                                if (isDropTarget && !isDragged) Modifier.border(2.dp, tokens.textPrimary, cornerShape) else Modifier
+                            )
                         ) {
                             GalleryPiece(
                                 meta = meta,

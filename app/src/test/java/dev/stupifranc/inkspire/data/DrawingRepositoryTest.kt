@@ -163,4 +163,65 @@ class DrawingRepositoryTest {
         assertThat(repo.listDrawings().single().hasThumbnail).isTrue()
         assertThat(repo.thumbnailFile(meta.id)?.readBytes()).isEqualTo(byteArrayOf(1, 2, 3))
     }
+
+    @Test
+    fun updateDrawingOrder_reordersAndRoundTrips() {
+        val repo = repository()
+        val d1 = repo.createDrawing("D1", 100f, 100f, 0)
+        val d2 = repo.createDrawing("D2", 100f, 100f, 0)
+        val d3 = repo.createDrawing("D3", 100f, 100f, 0)
+
+        // default order: D3, D2, D1 (because create assigns minOrder - 1)
+        assertThat(repo.listDrawings().map { it.id }).containsExactly(d3.id, d2.id, d1.id).inOrder()
+
+        repo.updateDrawingOrder(listOf(d2.id, d1.id, d3.id))
+
+        assertThat(repo.listDrawings().map { it.id }).containsExactly(d2.id, d1.id, d3.id).inOrder()
+    }
+
+    @Test
+    fun updateDrawingOrder_partialListKeepsUnlistedDrawings() {
+        val repo = repository()
+        val d1 = repo.createDrawing("D1", 100f, 100f, 0)
+        val d2 = repo.createDrawing("D2", 100f, 100f, 0)
+        val d3 = repo.createDrawing("D3", 100f, 100f, 0)
+
+        repo.updateDrawingOrder(listOf(d1.id, d2.id))
+
+        val ids = repo.listDrawings().map { it.id }
+        assertThat(ids).containsExactly(d1.id, d2.id, d3.id)
+    }
+
+    @Test
+    fun duplicateIndexNormalization_renumbersOnceAndIsStable() {
+        val repo = repository()
+        val d1 = repo.createDrawing("D1", 100f, 100f, 0)
+        val d2 = repo.createDrawing("D2", 100f, 100f, 0)
+        
+        // Manually corrupt the file to have duplicate orderIndex
+        val file = File(tempFolder.root, "index.json")
+        val json = file.readText().replace("\"orderIndex\":-1", "\"orderIndex\":0").replace("\"orderIndex\":-2", "\"orderIndex\":0")
+        file.writeText(json)
+
+        // This list call should trigger normalization
+        val normalized = repo.listDrawings()
+        val indices = normalized.map { it.orderIndex }
+        assertThat(indices.distinct()).hasSize(normalized.size)
+        
+        // A second list call should not change anything
+        val secondList = repo.listDrawings()
+        assertThat(secondList.map { it.orderIndex }).isEqualTo(indices)
+    }
+
+    @Test
+    fun listDrawings_pinnedFloatsAboveUnpinnedRegardlessOfOrderIndex() {
+        val repo = repository()
+        val d1 = repo.createDrawing("D1", 100f, 100f, 0)
+        val d2 = repo.createDrawing("D2", 100f, 100f, 0)
+        
+        repo.togglePin(d1.id)
+        
+        val listed = repo.listDrawings()
+        assertThat(listed.first().id).isEqualTo(d1.id)
+    }
 }

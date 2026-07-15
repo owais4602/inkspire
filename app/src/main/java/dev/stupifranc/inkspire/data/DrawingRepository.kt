@@ -28,15 +28,29 @@ class DrawingRepository(private val rootDir: File) {
     }
 
     fun listDrawings(): List<DrawingMeta> {
-        return readIndex().sortedWith(
+        val index = readIndex()
+        val needsNormalization = index.isNotEmpty() && index.map { it.orderIndex }.distinct().size != index.size
+        
+        if (needsNormalization) {
+            val sortedForNormalization = index.sortedWith(
+                compareByDescending<DrawingMeta> { it.isPinned }
+                    .thenByDescending { it.updatedAtEpochMillis }
+            )
+            val normalized = sortedForNormalization.mapIndexed { i, meta -> meta.copy(orderIndex = i.toLong()) }
+            writeIndex(normalized)
+            return normalized
+        }
+        
+        return index.sortedWith(
             compareByDescending<DrawingMeta> { it.isPinned }
                 .thenBy { it.orderIndex }
-                .thenByDescending { it.updatedAtEpochMillis }
         )
     }
 
     fun createDrawing(name: String, width: Float, height: Float, backgroundColorArgb: Int, shape: dev.stupifranc.inkspire.model.CanvasShape = dev.stupifranc.inkspire.model.CanvasShape.RECTANGLE): DrawingMeta {
         val now = System.currentTimeMillis()
+        val currentIndex = readIndex()
+        val minOrder = currentIndex.minOfOrNull { it.orderIndex } ?: 0L
         val meta = DrawingMeta(
             id = UUID.randomUUID().toString(),
             name = name,
@@ -46,9 +60,10 @@ class DrawingRepository(private val rootDir: File) {
             shape = shape,
             createdAtEpochMillis = now,
             updatedAtEpochMillis = now,
+            orderIndex = minOrder - 1,
         )
         drawingDir(meta.id).mkdirs()
-        writeIndex(readIndex() + meta)
+        writeIndex(currentIndex + meta)
         return meta
     }
 
@@ -97,16 +112,19 @@ class DrawingRepository(private val rootDir: File) {
     }
 
     fun duplicateDrawing(id: String): DrawingMeta? {
-        val source = readIndex().find { it.id == id } ?: return null
+        val currentIndex = readIndex()
+        val source = currentIndex.find { it.id == id } ?: return null
         val now = System.currentTimeMillis()
+        val minOrder = currentIndex.minOfOrNull { it.orderIndex } ?: 0L
         val copy = source.copy(
             id = UUID.randomUUID().toString(),
             name = "${source.name} copy",
             createdAtEpochMillis = now,
             updatedAtEpochMillis = now,
+            orderIndex = minOrder - 1,
         )
         drawingDir(source.id).copyRecursively(drawingDir(copy.id), overwrite = true)
-        writeIndex(readIndex() + copy)
+        writeIndex(currentIndex + copy)
         return copy
     }
 

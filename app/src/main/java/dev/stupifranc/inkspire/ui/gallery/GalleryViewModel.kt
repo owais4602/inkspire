@@ -46,14 +46,17 @@ class GalleryViewModel(
         refresh()
     }
 
-    fun reorderDrawings(fromIndex: Int, toIndex: Int) {
+    fun dropOnto(draggedId: String, targetId: String) {
         val currentDrawings = drawings.toMutableList()
-        val item = currentDrawings.removeAt(fromIndex)
-        currentDrawings.add(toIndex, item)
-        // Optimistically update UI
-        drawings = currentDrawings
-        // Save new order to disk
+        val draggedIndex = currentDrawings.indexOfFirst { it.id == draggedId }
+        val targetIndex = currentDrawings.indexOfFirst { it.id == targetId }
+        if (draggedIndex == -1 || targetIndex == -1) return
+
+        val item = currentDrawings.removeAt(draggedIndex)
+        currentDrawings.add(targetIndex, item)
+        
         repository.updateDrawingOrder(currentDrawings.map { it.id })
+        refresh()
     }
 
     /** Width/height start at 0 — the editor fills the document to whatever viewport first appears, same as a fresh install. */
