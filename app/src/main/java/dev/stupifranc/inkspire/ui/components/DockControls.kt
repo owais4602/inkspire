@@ -2,6 +2,8 @@ package dev.stupifranc.inkspire.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
@@ -22,6 +24,7 @@ import android.view.HapticFeedbackConstants
 internal fun DockIconButton(
     selected: Boolean,
     onClick: () -> Unit,
+    onDoubleClick: (() -> Unit)? = null,
     enabled: Boolean = true,
     icon: @Composable (tint: Color) -> Unit,
 ) {
@@ -38,6 +41,20 @@ internal fun DockIconButton(
         onClick()
     }
 
+    @OptIn(ExperimentalFoundationApi::class)
+    val clickModifier = if (onDoubleClick != null) {
+        Modifier.combinedClickable(
+            enabled = enabled,
+            onClick = hapticOnClick,
+            onDoubleClick = {
+                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                onDoubleClick()
+            }
+        )
+    } else {
+        Modifier.clickable(enabled = enabled, onClick = hapticOnClick)
+    }
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -45,7 +62,7 @@ internal fun DockIconButton(
             .size(40.dp)
             .clip(CircleShape)
             .background(background)
-            .clickable(enabled = enabled, onClick = hapticOnClick),
+            .then(clickModifier),
     ) {
         icon(tint)
     }

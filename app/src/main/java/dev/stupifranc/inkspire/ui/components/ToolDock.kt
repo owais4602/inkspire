@@ -212,11 +212,23 @@ fun ToolDock(
 
                 DockDivider()
 
-                DockIconButton(selected = symmetryEnabled, onClick = {
-                    val turningOn = !symmetryEnabled
-                    onToggleSymmetry()
-                    expansion = if (turningOn) DockExpansion.SYMMETRY else DockExpansion.NONE
-                }) { tint -> SymmetryIcon(tint) }
+                DockIconButton(
+                    selected = symmetryEnabled,
+                    onClick = {
+                        if (!symmetryEnabled) {
+                            onToggleSymmetry()
+                            expansion = DockExpansion.SYMMETRY
+                        } else {
+                            toggle(DockExpansion.SYMMETRY)
+                        }
+                    },
+                    onDoubleClick = {
+                        if (symmetryEnabled) {
+                            onToggleSymmetry()
+                            expansion = DockExpansion.NONE
+                        }
+                    }
+                ) { tint -> SymmetryIcon(tint) }
 
                 Box(
                     modifier = Modifier
