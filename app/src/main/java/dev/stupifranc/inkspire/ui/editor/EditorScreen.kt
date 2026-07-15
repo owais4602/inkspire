@@ -63,7 +63,7 @@ fun EditorScreen(
     var pendingExportScale by remember { mutableStateOf<Int?>(null) }
     var dockCollapseSignal by remember { mutableStateOf(0) }
     val inkBrush = remember(viewModel.brushSpec, viewModel.viewport.scale) {
-        viewModel.brushSpec.copy(size = viewModel.brushSpec.size * viewModel.viewport.scale).toInkBrush()
+        viewModel.brushSpec.copy(size = viewModel.brushSpec.size / viewModel.viewport.scale).toInkBrush()
     }
     val context = LocalContext.current
 
