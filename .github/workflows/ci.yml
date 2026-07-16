@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Guard against experimental-ink-API leaks outside ink/
+        run: |
+          if grep -rn "ExperimentalInkCustomBrushApi" app/src/main/java --include="*.kt" | grep -v "/ink/"; then
+            echo "::error::@OptIn(ExperimentalInkCustomBrushApi) must be confined to files under ink/ (see CONTRIBUTING.md §2)"
+            exit 1
+          fi
+
+      - name: Guard against Android/ink imports in core/
+        run: |
+          if grep -rEn "^import (android|androidx\.ink)\." app/src/main/java/dev/stupifranc/inkspire/core --include="*.kt" 2>/dev/null; then
+            echo "::error::core/ must stay pure Kotlin (no android.* or androidx.ink.* imports) — see CONTRIBUTING.md §2. model/ is exempt (e.g. StrokeEntry legitimately wraps an ink Stroke)."
+            exit 1
+          fi
+
+      - name: Unit tests + debug assemble
+        run: ./gradlew test assembleDebug --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/tests/
+          retention-days: 7

@@ -58,8 +58,8 @@ internal fun DockIconButton(
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .padding(horizontal = 2.dp)
-            .size(40.dp)
+            .padding(horizontal = 1.dp)
+            .size(36.dp)
             .clip(CircleShape)
             .background(background)
             .then(clickModifier),

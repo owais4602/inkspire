@@ -153,7 +153,7 @@ class EditorViewModel(application: Application, private val drawingId: String) :
     private fun loadInitialCanvasSpec(): CanvasSpec {
         val meta = repository.listDrawings().find { it.id == drawingId }
             ?: return CanvasSpec(width = 0f, height = 0f, backgroundColorArgb = 0)
-        return CanvasSpec(width = meta.width, height = meta.height, backgroundColorArgb = meta.backgroundColorArgb, paperStyle = meta.paperStyle, paperSpacing = meta.paperSpacing, shape = meta.shape)
+        return CanvasSpec(width = meta.width, height = meta.height, backgroundColorArgb = meta.backgroundColorArgb, background = meta.background, paperStyle = meta.paperStyle, paperSpacing = meta.paperSpacing, shape = meta.shape)
     }
 
     val symmetryConfig: SymmetryConfig

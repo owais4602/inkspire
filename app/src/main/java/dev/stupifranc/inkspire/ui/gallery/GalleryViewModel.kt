@@ -27,6 +27,8 @@ class GalleryViewModel(
     var prefs by mutableStateOf(AppPrefs())
         private set
 
+    private val hiddenIds = mutableSetOf<String>()
+
     init {
         prefs = prefsStore.load()
         refresh()
@@ -38,7 +40,17 @@ class GalleryViewModel(
     }
 
     fun refresh() {
-        drawings = repository.listDrawings()
+        drawings = repository.listDrawings().filter { it.id !in hiddenIds }
+    }
+
+    fun hideDrawing(id: String) {
+        hiddenIds.add(id)
+        refresh()
+    }
+
+    fun restoreDrawing(id: String) {
+        hiddenIds.remove(id)
+        refresh()
     }
 
     fun togglePin(id: String) {
@@ -59,6 +71,12 @@ class GalleryViewModel(
         refresh()
     }
 
+    fun shuffleDrawings() {
+        val currentDrawings = drawings.shuffled()
+        repository.updateDrawingOrder(currentDrawings.map { it.id })
+        refresh()
+    }
+
     /** Width/height start at 0 — the editor fills the document to whatever viewport first appears, same as a fresh install. */
     fun createDrawing(): DrawingMeta {
         val defaultBg = if (isSystemDark()) 0xFF1C1B1F.toInt() else 0xFFFFFFFF.toInt()
@@ -73,6 +91,7 @@ class GalleryViewModel(
     }
 
     fun delete(id: String) {
+        hiddenIds.remove(id)
         repository.deleteDrawing(id)
         refresh()
     }

@@ -124,6 +124,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import kotlinx.coroutines.launch
 import dev.stupifranc.inkspire.core.ItemBox
 import dev.stupifranc.inkspire.core.reorderTarget
+import dev.stupifranc.inkspire.ui.components.ShakeDetector
 
 // Minimal, premium, zero-chroma gallery: strict monochrome tonal sets, no gradients. The editor stays
 // light; this palette is scoped to the gallery alone via a local MaterialTheme. Wall tone (dark/light)
@@ -222,6 +223,11 @@ fun GalleryScreen(
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+
+    ShakeDetector {
+        viewModel.shuffleDrawings()
+    }
 
     MaterialTheme(colorScheme = galleryColorScheme(tokens)) {
         Box(
@@ -280,20 +286,6 @@ fun GalleryScreen(
                         Box(modifier = Modifier
                             .animateItem()
                             .zIndex(if (isDragged) 1f else 0f)
-                            .graphicsLayer {
-                                if (isDragged) {
-                                    translationX = dragOffset.value.x
-                                    translationY = dragOffset.value.y
-                                    scaleX = liftScale
-                                    scaleY = liftScale
-                                    shadowElevation = liftElevation.toPx()
-                                    alpha = 0.9f
-                                } else {
-                                    scaleX = targetScale
-                                    scaleY = targetScale
-                                    alpha = targetAlpha
-                                }
-                            }
                             .pointerInput(meta.id) {
                                 detectTapGestures(
                                     onTap = { onOpenDrawing(meta.id) }
@@ -365,10 +357,24 @@ fun GalleryScreen(
                                     },
                                     onDragEnd = {
                                         if (isHoveringDeleteBin) {
-                                            viewModel.delete(meta.id)
+                                            val deletedId = meta.id
+                                            viewModel.hideDrawing(deletedId)
                                             draggedId = null
                                             dropTargetId = null
                                             isHoveringDeleteBin = false
+
+                                            scope.launch {
+                                                val result = snackbarHostState.showSnackbar(
+                                                    message = "Drawing deleted",
+                                                    actionLabel = "Undo",
+                                                    duration = androidx.compose.material3.SnackbarDuration.Short
+                                                )
+                                                if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                                    viewModel.restoreDrawing(deletedId)
+                                                } else {
+                                                    viewModel.delete(deletedId)
+                                                }
+                                            }
                                         } else if (dragOffset.value == Offset.Zero) {
                                             draggedId = null
                                             dropTargetId = null
@@ -394,6 +400,20 @@ fun GalleryScreen(
                                         }
                                     }
                                 )
+                            }
+                            .graphicsLayer {
+                                if (isDragged) {
+                                    translationX = dragOffset.value.x
+                                    translationY = dragOffset.value.y
+                                    scaleX = liftScale
+                                    scaleY = liftScale
+                                    shadowElevation = liftElevation.toPx()
+                                    alpha = 0.9f
+                                } else {
+                                    scaleX = targetScale
+                                    scaleY = targetScale
+                                    alpha = targetAlpha
+                                }
                             }
                         ) {
                             GalleryPiece(
@@ -436,6 +456,13 @@ fun GalleryScreen(
                     CrossIcon(tint = binColor)
                 }
             }
+
+            androidx.compose.material3.SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = insets.calculateBottomPadding() + 80.dp)
+            )
         }
 
         if (showCustomizeSheet) {
