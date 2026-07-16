@@ -243,6 +243,9 @@ fun DrawingSurface(
                 val view = InProgressStrokesView(context)
                 val predictor = MotionEventPredictor.newInstance(view)
                 view.textureBitmapStore = store
+                // Init the render thread now: waiting for the first stroke to init means that
+                // stroke can miss the wet layer entirely (M11 first-stroke-invisible fix).
+                view.eagerInit()
                 view.apply {
                     addFinishedStrokesListener(object : InProgressStrokesFinishedListener {
                         override fun onStrokesFinished(finishedStrokes: Map<InProgressStrokeId, Stroke>) {
@@ -702,7 +705,13 @@ private fun handlePenTouch(
         MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
             val liftedPointerId = event.getPointerId(event.actionIndex)
             if (liftedPointerId != touchState.activePointerId) return false
-            touchState.activeStrokeId?.let { strokeId -> view.finishStroke(event, touchState.activePointerId, strokeId) }
+            touchState.activeStrokeId?.let { strokeId ->
+                view.finishStroke(event, touchState.activePointerId, strokeId)
+                // The wet->dry handoff (which fires onStrokesFinished) is synchronized with UI
+                // frames; on an otherwise-idle screen no frame ever comes and the stroke stays
+                // invisible until some unrelated tap produces one (M11 first-stroke-invisible fix).
+                view.postInvalidateOnAnimation()
+            }
             touchState.activeStrokeId = null
             touchState.activePointerId = -1
             onStrokeActiveChanged(false)

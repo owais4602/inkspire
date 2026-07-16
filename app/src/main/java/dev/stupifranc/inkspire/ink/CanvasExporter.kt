@@ -20,6 +20,7 @@ import java.util.Locale
 private const val THUMBNAIL_TARGET_SHORT_SIDE_PX = 480f
 private const val THUMBNAIL_MAX_AREA_PX = 1024f * 1024f // 1 Megapixel
 private const val THUMBNAIL_MAX_DIMENSION_PX = 4096f // Hardware texture limit safety
+private const val THUMBNAIL_SUPERSAMPLE_FACTOR = 2f
 
 /** Renders the full document (not just the visible viewport) and saves it as a PNG in the gallery. */
 object CanvasExporter {
@@ -30,8 +31,31 @@ object CanvasExporter {
     fun renderBitmap(context: Context, canvasSpec: CanvasSpec, strokes: List<StrokeEntry>, scale: Float): Bitmap {
         val width = (canvasSpec.width * scale).toInt().coerceAtLeast(1)
         val height = (canvasSpec.height * scale).toInt().coerceAtLeast(1)
+        // A plain Bitmap-backed Canvas is never hardware-accelerated, and CanvasStrokeRenderer
+        // silently drops particle-tip strokes (airbrush) on that path — so prefer rendering
+        // through a RenderNode/HardwareRenderer, falling back to software below API 29 or if
+        // the GPU pass fails (e.g. dimensions beyond the texture limit on a huge export).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val hardware = runCatching {
+                renderHardware(width, height) { canvas -> drawDocument(context, canvas, canvasSpec, strokes, scale, width, height) }
+            }.getOrNull()
+            if (hardware != null) return hardware
+        }
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
+        drawDocument(context, Canvas(bitmap), canvasSpec, strokes, scale, width, height)
+        return bitmap
+    }
+
+    /** Draws the full document (background, paper style, strokes) onto [canvas] at [scale]. */
+    private fun drawDocument(
+        context: Context,
+        canvas: Canvas,
+        canvasSpec: CanvasSpec,
+        strokes: List<StrokeEntry>,
+        scale: Float,
+        width: Int,
+        height: Int,
+    ) {
         if (canvasSpec.background != null && canvasSpec.background.colors.isNotEmpty()) {
             val bg = canvasSpec.background
             if (bg.colors.size == 1) {
@@ -77,7 +101,47 @@ object CanvasExporter {
         canvas.concat(scaleMatrix)
         strokes.forEach { entry -> renderer.draw(canvas, entry.stroke, scaleMatrix) }
         canvas.restore()
-        return bitmap
+    }
+
+    /**
+     * Renders [drawBlock] on a GPU-backed canvas and reads the pixels back into a software
+     * ARGB_8888 bitmap (so callers can still compress/scale it). Returns null if the frame
+     * couldn't be produced. API 29+.
+     */
+    private fun renderHardware(width: Int, height: Int, drawBlock: (Canvas) -> Unit): Bitmap? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val imageReader = android.media.ImageReader.newInstance(
+            width, height, android.graphics.PixelFormat.RGBA_8888, 1,
+            android.hardware.HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE or android.hardware.HardwareBuffer.USAGE_GPU_COLOR_OUTPUT,
+        )
+        val renderer = android.graphics.HardwareRenderer()
+        try {
+            val node = android.graphics.RenderNode("inkspireExport")
+            node.setPosition(0, 0, width, height)
+            val recordingCanvas = node.beginRecording(width, height)
+            try {
+                drawBlock(recordingCanvas)
+            } finally {
+                node.endRecording()
+            }
+            renderer.setSurface(imageReader.surface)
+            renderer.setContentRoot(node)
+            renderer.createRenderRequest().setWaitForPresent(true).syncAndDraw()
+            val image = imageReader.acquireLatestImage() ?: return null
+            try {
+                val hardwareBuffer = image.hardwareBuffer ?: return null
+                try {
+                    return Bitmap.wrapHardwareBuffer(hardwareBuffer, null)?.copy(Bitmap.Config.ARGB_8888, false)
+                } finally {
+                    hardwareBuffer.close()
+                }
+            } finally {
+                image.close()
+            }
+        } finally {
+            renderer.destroy()
+            imageReader.close()
+        }
     }
 
     /** Small preview render for gallery thumbnails, downscaled to ensure crisp rendering while preventing OOM. */
@@ -100,7 +164,22 @@ object CanvasExporter {
         // Never upscale beyond 1x (if the canvas is tiny, leave it tiny)
         scale = scale.coerceAtMost(1f)
 
-        return renderBitmap(context, canvasSpec, strokes, scale)
+        if (scale >= 1f) {
+            // No downscale happening — nothing to supersample against.
+            return renderBitmap(context, canvasSpec, strokes, scale)
+        }
+
+        // Rendering straight at the tiny target resolution starves faint, high-frequency brush
+        // textures (e.g. airbrush's low-opacity granulation texture) of enough samples to survive
+        // — they alias away to near-nothing. Render bigger, then downscale with bilinear
+        // filtering so the true average density comes through; the brush recipe itself is untouched.
+        val targetWidth = (canvasSpec.width * scale).toInt().coerceAtLeast(1)
+        val targetHeight = (canvasSpec.height * scale).toInt().coerceAtLeast(1)
+        val supersampleScale = (scale * THUMBNAIL_SUPERSAMPLE_FACTOR).coerceAtMost(1f)
+        val supersampled = renderBitmap(context, canvasSpec, strokes, supersampleScale)
+        val downscaled = Bitmap.createScaledBitmap(supersampled, targetWidth, targetHeight, true)
+        if (downscaled !== supersampled) supersampled.recycle()
+        return downscaled
     }
 
     fun toPngBytes(bitmap: Bitmap): ByteArray {
