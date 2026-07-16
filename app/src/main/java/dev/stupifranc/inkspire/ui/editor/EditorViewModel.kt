@@ -51,6 +51,23 @@ private val DEFAULT_SIZES = mapOf(
     BrushFamilyChoice.PEN to 4f,
     BrushFamilyChoice.MARKER to 14f,
     BrushFamilyChoice.HIGHLIGHTER to 24f,
+    BrushFamilyChoice.PENCIL to 4f,
+    BrushFamilyChoice.WATERCOLOR to 30f,
+    BrushFamilyChoice.DRY_INK to 20f,
+    BrushFamilyChoice.CALLIGRAPHY to 14f,
+    BrushFamilyChoice.DASHED to 14f,
+    BrushFamilyChoice.RAINBOW to 24f,
+    BrushFamilyChoice.NEON to 20f,
+    BrushFamilyChoice.AIRBRUSH to 40f
+)
+
+// M10a set only — extend when the M10b recipes (RAINBOW/NEON/AIRBRUSH) land in BrushCatalog.
+val MEDIA_BRUSHES = listOf(
+    BrushFamilyChoice.PENCIL,
+    BrushFamilyChoice.WATERCOLOR,
+    BrushFamilyChoice.DRY_INK,
+    BrushFamilyChoice.CALLIGRAPHY,
+    BrushFamilyChoice.DASHED
 )
 
 class EditorViewModel(application: Application, private val drawingId: String) : AndroidViewModel(application) {
@@ -90,6 +107,9 @@ class EditorViewModel(application: Application, private val drawingId: String) :
             size = DEFAULT_SIZES.getValue(BrushFamilyChoice.PEN)
         )
     )
+        private set
+
+    var recentMediaBrush by mutableStateOf(BrushFamilyChoice.WATERCOLOR)
         private set
 
     var recentColors by mutableStateOf(recentColorsStore.load())
@@ -296,6 +316,9 @@ class EditorViewModel(application: Application, private val drawingId: String) :
     }
 
     fun selectBrushFamily(family: BrushFamilyChoice) {
+        if (family in MEDIA_BRUSHES) {
+            recentMediaBrush = family
+        }
         brushSpec = brushSpec.copy(family = family, size = sizeMemory.getValue(family))
     }
 
@@ -360,7 +383,7 @@ class EditorViewModel(application: Application, private val drawingId: String) :
         repository.saveStrokes(drawingId, StrokeStore.encode(entries))
         repository.updateCanvasSpec(drawingId, spec.width, spec.height, spec.backgroundColorArgb, spec.paperStyle, spec.paperSpacing, spec.shape)
         if (spec.width > 0f && spec.height > 0f) {
-            val thumbnail = CanvasExporter.renderThumbnail(spec, entries)
+            val thumbnail = CanvasExporter.renderThumbnail(getApplication(), spec, entries)
             repository.saveThumbnail(drawingId, CanvasExporter.toPngBytes(thumbnail))
         }
     }

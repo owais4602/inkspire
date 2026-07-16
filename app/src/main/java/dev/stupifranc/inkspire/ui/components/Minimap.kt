@@ -22,10 +22,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import dev.stupifranc.inkspire.core.Point
 import dev.stupifranc.inkspire.core.Viewport
+import dev.stupifranc.inkspire.ink.InkTextures
 import dev.stupifranc.inkspire.ink.toWorldToScreenMatrix
 import dev.stupifranc.inkspire.model.CanvasSpec
 import dev.stupifranc.inkspire.model.StrokeEntry
@@ -52,7 +54,9 @@ fun Minimap(
         (maxDimension * aspectRatio) to maxDimension
     }
 
-    val renderer = remember { CanvasStrokeRenderer.create() }
+    val context = LocalContext.current
+    val store = remember { InkTextures.getStore(context) }
+    val renderer = remember(store) { CanvasStrokeRenderer.create(store) }
     val shape = canvasOutlineShape(canvasSpec.shape)
 
     Surface(

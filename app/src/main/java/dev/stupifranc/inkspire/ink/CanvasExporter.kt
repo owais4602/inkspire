@@ -24,10 +24,10 @@ private const val THUMBNAIL_MAX_DIMENSION_PX = 4096f // Hardware texture limit s
 /** Renders the full document (not just the visible viewport) and saves it as a PNG in the gallery. */
 object CanvasExporter {
 
-    fun renderBitmap(canvasSpec: CanvasSpec, strokes: List<StrokeEntry>, scale: Int): Bitmap =
-        renderBitmap(canvasSpec, strokes, scale.toFloat())
+    fun renderBitmap(context: Context, canvasSpec: CanvasSpec, strokes: List<StrokeEntry>, scale: Int): Bitmap =
+        renderBitmap(context, canvasSpec, strokes, scale.toFloat())
 
-    fun renderBitmap(canvasSpec: CanvasSpec, strokes: List<StrokeEntry>, scale: Float): Bitmap {
+    fun renderBitmap(context: Context, canvasSpec: CanvasSpec, strokes: List<StrokeEntry>, scale: Float): Bitmap {
         val width = (canvasSpec.width * scale).toInt().coerceAtLeast(1)
         val height = (canvasSpec.height * scale).toInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -35,7 +35,7 @@ object CanvasExporter {
         canvas.drawColor(canvasSpec.backgroundColorArgb)
         PaperStyleRenderer.draw(canvas, canvasSpec, 0f, 0f, width.toFloat(), height.toFloat(), scale)
 
-        val renderer = CanvasStrokeRenderer.create()
+        val renderer = CanvasStrokeRenderer.create(InkTextures.getStore(context))
         canvas.save()
         val scaleMatrix = Matrix().apply { setScale(scale, scale) }
         canvas.concat(scaleMatrix)
@@ -45,7 +45,7 @@ object CanvasExporter {
     }
 
     /** Small preview render for gallery thumbnails, downscaled to ensure crisp rendering while preventing OOM. */
-    fun renderThumbnail(canvasSpec: CanvasSpec, strokes: List<StrokeEntry>): Bitmap {
+    fun renderThumbnail(context: Context, canvasSpec: CanvasSpec, strokes: List<StrokeEntry>): Bitmap {
         val shortestSide = minOf(canvasSpec.width, canvasSpec.height).coerceAtLeast(1f)
         var scale = THUMBNAIL_TARGET_SHORT_SIDE_PX / shortestSide
         
@@ -64,7 +64,7 @@ object CanvasExporter {
         // Never upscale beyond 1x (if the canvas is tiny, leave it tiny)
         scale = scale.coerceAtMost(1f)
 
-        return renderBitmap(canvasSpec, strokes, scale)
+        return renderBitmap(context, canvasSpec, strokes, scale)
     }
 
     fun toPngBytes(bitmap: Bitmap): ByteArray {

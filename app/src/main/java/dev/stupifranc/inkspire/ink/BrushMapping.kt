@@ -8,11 +8,7 @@ import dev.stupifranc.inkspire.model.BrushSpec
 
 private const val DEFAULT_EPSILON = 0.0078125f // 0.25 world units ÷ Viewport.MAX_SCALE (32): keeps quantization ≤ 1 px at max zoom, per the Ink epsilon guidance
 
-fun BrushFamilyChoice.toBrushFamily(): BrushFamily = when (this) {
-    BrushFamilyChoice.PEN -> StockBrushes.marker()
-    BrushFamilyChoice.MARKER -> StockBrushes.pressurePen()
-    BrushFamilyChoice.HIGHLIGHTER -> StockBrushes.highlighter()
-}
+fun BrushFamilyChoice.toBrushFamily(): BrushFamily = BrushCatalog.getFamily(this)
 
 /**
  * Reverse of [toBrushFamily]. Structural (not referential) equality on [BrushFamily] makes this a safe
@@ -20,12 +16,7 @@ fun BrushFamilyChoice.toBrushFamily(): BrushFamily = when (this) {
  * to persist "which family" as our own enum instead of opting into `ink-storage`'s still-experimental
  * generic `BrushFamily` byte serialization, which exists for custom brush textures we don't use.
  */
-fun BrushFamily.toBrushFamilyChoice(): BrushFamilyChoice = when (this) {
-    StockBrushes.marker() -> BrushFamilyChoice.PEN
-    StockBrushes.pressurePen() -> BrushFamilyChoice.MARKER
-    StockBrushes.highlighter() -> BrushFamilyChoice.HIGHLIGHTER
-    else -> BrushFamilyChoice.PEN
-}
+fun BrushFamily.toBrushFamilyChoice(): BrushFamilyChoice = BrushCatalog.getChoice(this)
 
 fun BrushSpec.toInkBrush(): Brush =
     Brush.createWithColorIntArgb(family.toBrushFamily(), colorArgb, size, DEFAULT_EPSILON)

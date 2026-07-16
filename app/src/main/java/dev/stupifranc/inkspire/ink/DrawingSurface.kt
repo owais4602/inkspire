@@ -39,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.input.motionprediction.MotionEventPredictor
 import androidx.ink.authoring.InProgressStrokeId
@@ -46,6 +47,7 @@ import androidx.ink.authoring.InProgressStrokesFinishedListener
 import androidx.ink.authoring.InProgressStrokesView
 import androidx.ink.brush.Brush
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
+import dev.stupifranc.inkspire.ink.InkTextures
 import androidx.ink.strokes.Stroke
 import dev.stupifranc.inkspire.core.Point
 import dev.stupifranc.inkspire.core.SymmetryConfig
@@ -132,7 +134,9 @@ fun DrawingSurface(
     onCanvasTouchStart: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val renderer = remember { CanvasStrokeRenderer.create() }
+    val context = LocalContext.current
+    val store = remember { InkTextures.getStore(context) }
+    val renderer = remember(store) { CanvasStrokeRenderer.create(store) }
     val brushState = rememberUpdatedState(currentBrush)
     val toolState = rememberUpdatedState(tool)
     val strokesState = rememberUpdatedState(strokes)
@@ -232,6 +236,7 @@ fun DrawingSurface(
             factory = { context ->
                 val view = InProgressStrokesView(context)
                 val predictor = MotionEventPredictor.newInstance(view)
+                view.textureBitmapStore = store
                 view.apply {
                     addFinishedStrokesListener(object : InProgressStrokesFinishedListener {
                         override fun onStrokesFinished(finishedStrokes: Map<InProgressStrokeId, Stroke>) {

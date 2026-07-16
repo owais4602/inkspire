@@ -52,7 +52,7 @@ object StrokeStore {
             val id = data.readUTF()
             val groupId = data.readUTF()
             val familyName = data.readUTF()
-            val familyChoice = if (familyName == "PRESSURE_PEN") BrushFamilyChoice.PEN else BrushFamilyChoice.valueOf(familyName)
+            val familyChoice = dev.stupifranc.inkspire.model.parseBrushFamilyChoice(familyName)
             val family = familyChoice.toBrushFamily()
             val colorIntArgb = data.readInt()
             val size = data.readFloat()

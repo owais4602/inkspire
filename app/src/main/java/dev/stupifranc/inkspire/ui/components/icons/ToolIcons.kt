@@ -459,3 +459,123 @@ fun StylusIcon(tint: Color, modifier: Modifier = Modifier) {
         drawCircle(tint, radius = size.width * 0.05f, center = Offset(size.width * 0.25f, size.height * 0.85f))
     }
 }
+
+@Composable
+fun MediaBrushIcon(brushFamily: dev.stupifranc.inkspire.model.BrushFamilyChoice, tint: Color, modifier: Modifier = Modifier) {
+    when (brushFamily) {
+        dev.stupifranc.inkspire.model.BrushFamilyChoice.PENCIL -> PencilIcon(tint, modifier)
+        dev.stupifranc.inkspire.model.BrushFamilyChoice.WATERCOLOR -> WatercolorIcon(tint, modifier)
+        dev.stupifranc.inkspire.model.BrushFamilyChoice.DRY_INK -> DryInkIcon(tint, modifier)
+        dev.stupifranc.inkspire.model.BrushFamilyChoice.CALLIGRAPHY -> CalligraphyIcon(tint, modifier)
+        dev.stupifranc.inkspire.model.BrushFamilyChoice.DASHED -> DashedIcon(tint, modifier)
+        dev.stupifranc.inkspire.model.BrushFamilyChoice.RAINBOW -> RainbowIcon(tint, modifier)
+        dev.stupifranc.inkspire.model.BrushFamilyChoice.NEON -> NeonIcon(tint, modifier)
+        dev.stupifranc.inkspire.model.BrushFamilyChoice.AIRBRUSH -> AirbrushIcon(tint, modifier)
+        else -> MarkerIcon(tint, modifier)
+    }
+}
+
+@Composable
+fun PencilIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        // straight body
+        drawLine(tint, Offset(w * 0.25f, h * 0.8f), Offset(w * 0.75f, h * 0.2f), stroke.width, stroke.cap)
+        // point
+        drawLine(tint, Offset(w * 0.15f, h * 0.95f), Offset(w * 0.25f, h * 0.8f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.15f, h * 0.95f), Offset(w * 0.35f, h * 0.75f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun WatercolorIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        // tear drop
+        val path = Path().apply {
+            moveTo(w * 0.5f, h * 0.1f)
+            quadraticBezierTo(w * 0.9f, h * 0.5f, w * 0.5f, h * 0.9f)
+            quadraticBezierTo(w * 0.1f, h * 0.5f, w * 0.5f, h * 0.1f)
+            close()
+        }
+        drawPath(path, tint, style = stroke)
+    }
+}
+
+@Composable
+fun DryInkIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        // jagged streaks
+        drawLine(tint, Offset(w * 0.2f, h * 0.5f), Offset(w * 0.4f, h * 0.5f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.5f, h * 0.5f), Offset(w * 0.8f, h * 0.5f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.3f, h * 0.7f), Offset(w * 0.6f, h * 0.7f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun CalligraphyIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Square)
+        val w = size.width
+        val h = size.height
+        // angled thick stroke
+        drawLine(tint, Offset(w * 0.2f, h * 0.8f), Offset(w * 0.8f, h * 0.2f), stroke.width * 2f, stroke.cap)
+    }
+}
+
+@Composable
+fun DashedIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        // dashed diagonal
+        drawLine(tint, Offset(w * 0.15f, h * 0.85f), Offset(w * 0.35f, h * 0.65f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.45f, h * 0.55f), Offset(w * 0.65f, h * 0.35f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.75f, h * 0.25f), Offset(w * 0.95f, h * 0.05f), stroke.width, stroke.cap)
+    }
+}
+
+@Composable
+fun RainbowIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        drawArc(tint, startAngle = 180f, sweepAngle = 180f, useCenter = false, topLeft = Offset(w * 0.1f, h * 0.3f), size = Size(w * 0.8f, h * 0.8f), style = stroke)
+        drawArc(tint, startAngle = 180f, sweepAngle = 180f, useCenter = false, topLeft = Offset(w * 0.25f, h * 0.45f), size = Size(w * 0.5f, h * 0.5f), style = stroke)
+    }
+}
+
+@Composable
+fun NeonIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val stroke = Stroke(width = STROKE_WIDTH.toPx(), cap = StrokeCap.Round)
+        val w = size.width
+        val h = size.height
+        // glowing tube
+        drawLine(tint, Offset(w * 0.2f, h * 0.5f), Offset(w * 0.8f, h * 0.5f), stroke.width, stroke.cap)
+        drawLine(tint, Offset(w * 0.2f, h * 0.5f), Offset(w * 0.8f, h * 0.5f), stroke.width * 2.5f, stroke.cap, alpha = 0.4f)
+    }
+}
+
+@Composable
+fun AirbrushIcon(tint: Color, modifier: Modifier = Modifier) {
+    IconCanvas(modifier) {
+        val w = size.width
+        val h = size.height
+        // scatter dots
+        drawCircle(tint, STROKE_WIDTH.toPx() * 0.5f, Offset(w * 0.5f, h * 0.5f))
+        drawCircle(tint, STROKE_WIDTH.toPx() * 0.3f, Offset(w * 0.3f, h * 0.4f))
+        drawCircle(tint, STROKE_WIDTH.toPx() * 0.4f, Offset(w * 0.7f, h * 0.6f))
+        drawCircle(tint, STROKE_WIDTH.toPx() * 0.2f, Offset(w * 0.6f, h * 0.3f))
+        drawCircle(tint, STROKE_WIDTH.toPx() * 0.4f, Offset(w * 0.4f, h * 0.7f))
+    }
+}

@@ -53,6 +53,7 @@ import dev.stupifranc.inkspire.ui.components.icons.HandIcon
 import dev.stupifranc.inkspire.ui.components.icons.HighlighterIcon
 import dev.stupifranc.inkspire.ui.components.icons.MarkerIcon
 import dev.stupifranc.inkspire.ui.components.icons.PenIcon
+import dev.stupifranc.inkspire.ui.components.icons.MediaBrushIcon
 import dev.stupifranc.inkspire.ui.components.icons.MirrorIcon
 import dev.stupifranc.inkspire.ui.components.icons.MoreIcon
 import dev.stupifranc.inkspire.ui.components.icons.PaperDotsIcon
@@ -67,13 +68,14 @@ import dev.stupifranc.inkspire.ui.components.icons.SymmetryIcon
 import dev.stupifranc.inkspire.ui.components.icons.TuneIcon
 import kotlin.math.roundToInt
 
-private enum class DockExpansion { NONE, SIZE, SYMMETRY, CANVAS, MORE }
+private enum class DockExpansion { NONE, SIZE, SYMMETRY, CANVAS, MORE, BRUSHES }
 
 /** Compact, icon-first floating dock (Apple Notes markup-toolbar style) — replaces the old stacked text-button rows. */
 @Composable
 fun ToolDock(
     tool: Tool,
     brushFamily: BrushFamilyChoice,
+    recentMediaBrush: BrushFamilyChoice,
     colorArgb: Int,
     size: Float,
     sizeRange: ClosedFloatingPointRange<Float>,
@@ -134,6 +136,16 @@ fun ToolDock(
             ) {
                 Box(modifier = Modifier.padding(16.dp)) {
                     when (expansion) {
+                        DockExpansion.BRUSHES -> BrushesPanel(
+                            selectedBrush = brushFamily,
+                            size = size,
+                            range = sizeRange,
+                            onSelectBrush = { family ->
+                                onSelectBrush(family)
+                                expansion = DockExpansion.NONE
+                            },
+                            onSizeChange = onSizeChange,
+                        )
                         DockExpansion.SIZE -> SizeSlider(
                             size = size,
                             range = sizeRange,
@@ -201,6 +213,12 @@ fun ToolDock(
                     else { onSelectBrush(BrushFamilyChoice.HIGHLIGHTER); expansion = DockExpansion.NONE }
                 }) { tint -> HighlighterIcon(tint) }
 
+                val isMediaBrush = tool == Tool.PEN && brushFamily !in listOf(BrushFamilyChoice.PEN, BrushFamilyChoice.MARKER, BrushFamilyChoice.HIGHLIGHTER)
+                DockIconButton(selected = isMediaBrush, onClick = {
+                    if (isMediaBrush) toggle(DockExpansion.BRUSHES)
+                    else { onSelectBrush(recentMediaBrush); expansion = DockExpansion.NONE }
+                }) { tint -> dev.stupifranc.inkspire.ui.components.icons.MediaBrushIcon(brushFamily = recentMediaBrush, tint = tint) }
+
                 DockIconButton(selected = tool == Tool.ERASER, onClick = {
                     if (tool == Tool.ERASER) toggle(DockExpansion.SIZE)
                     else { onSelectEraser(); expansion = DockExpansion.NONE }
@@ -246,6 +264,45 @@ fun ToolDock(
                 DockIconButton(selected = expansion == DockExpansion.MORE, onClick = { toggle(DockExpansion.MORE) }) { tint -> MoreIcon(tint) }
             }
         }
+    }
+}
+
+@Composable
+private fun BrushesPanel(
+    selectedBrush: BrushFamilyChoice,
+    size: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onSelectBrush: (BrushFamilyChoice) -> Unit,
+    onSizeChange: (Float) -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        // M10a set only — RAINBOW/NEON/AIRBRUSH stay hidden until their M10b recipes exist
+        // (BrushCatalog would silently fall back to a plain marker for them).
+        val mediaBrushes = listOf(
+            BrushFamilyChoice.PENCIL,
+            BrushFamilyChoice.WATERCOLOR,
+            BrushFamilyChoice.DRY_INK,
+            BrushFamilyChoice.CALLIGRAPHY,
+            BrushFamilyChoice.DASHED
+        )
+        // A grid of media brushes (2 rows)
+        val rows = mediaBrushes.chunked(4)
+        rows.forEach { rowBrushes ->
+            Row(modifier = Modifier.padding(bottom = 8.dp)) {
+                rowBrushes.forEach { brush ->
+                    DockIconButton(selected = brush == selectedBrush, onClick = { onSelectBrush(brush) }) { tint ->
+                        MediaBrushIcon(brushFamily = brush, tint = tint)
+                    }
+                }
+            }
+        }
+        DockDivider()
+        SizeSlider(
+            size = size,
+            range = range,
+            onSizeChange = onSizeChange,
+            modifier = Modifier.width(240.dp).padding(top = 8.dp),
+        )
     }
 }
 

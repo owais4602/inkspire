@@ -77,7 +77,7 @@ fun EditorScreen(
     }
 
     fun exportAndShare(scale: Int) {
-        val bitmap = CanvasExporter.renderBitmap(viewModel.canvasSpec, viewModel.strokes, scale)
+        val bitmap = CanvasExporter.renderBitmap(context, viewModel.canvasSpec, viewModel.strokes, scale)
         val uri = CanvasExporter.saveToGallery(context, bitmap) ?: return
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
@@ -193,6 +193,7 @@ fun EditorScreen(
             ToolDock(
                 tool = viewModel.tool,
                 brushFamily = viewModel.brushSpec.family,
+                recentMediaBrush = viewModel.recentMediaBrush,
                 colorArgb = viewModel.brushSpec.colorArgb,
                 size = viewModel.brushSpec.size,
                 sizeRange = 2f..48f,
