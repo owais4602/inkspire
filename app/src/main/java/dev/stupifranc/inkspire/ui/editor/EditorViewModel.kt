@@ -61,13 +61,16 @@ private val DEFAULT_SIZES = mapOf(
     BrushFamilyChoice.AIRBRUSH to 40f
 )
 
-// M10a set only — extend when the M10b recipes (RAINBOW/NEON/AIRBRUSH) land in BrushCatalog.
+// M10a + M10b set
 val MEDIA_BRUSHES = listOf(
     BrushFamilyChoice.PENCIL,
     BrushFamilyChoice.WATERCOLOR,
     BrushFamilyChoice.DRY_INK,
     BrushFamilyChoice.CALLIGRAPHY,
-    BrushFamilyChoice.DASHED
+    BrushFamilyChoice.DASHED,
+    BrushFamilyChoice.RAINBOW,
+    BrushFamilyChoice.NEON,
+    BrushFamilyChoice.AIRBRUSH
 )
 
 class EditorViewModel(application: Application, private val drawingId: String) : AndroidViewModel(application) {
@@ -291,7 +294,17 @@ class EditorViewModel(application: Application, private val drawingId: String) :
 
     /** The page fill is always opaque — a translucent page over the workspace gray would read as a rendering bug. */
     fun setCanvasBackground(colorArgb: Int) {
-        canvasSpec = canvasSpec.copy(backgroundColorArgb = colorArgb or (0xFF shl 24))
+        val opaque = colorArgb or (0xFF shl 24)
+        canvasSpec = canvasSpec.copy(backgroundColorArgb = opaque, background = dev.stupifranc.inkspire.model.CanvasBackground(dev.stupifranc.inkspire.model.BackgroundKind.FLAT, listOf(opaque), 0f))
+        scheduleAutosave()
+    }
+
+    fun setCanvasBackground(bg: dev.stupifranc.inkspire.model.CanvasBackground) {
+        val opaqueBg = bg.copy(colors = bg.colors.map { it or (0xFF shl 24) })
+        canvasSpec = canvasSpec.copy(
+            background = opaqueBg,
+            backgroundColorArgb = opaqueBg.colors.firstOrNull() ?: canvasSpec.backgroundColorArgb
+        )
         scheduleAutosave()
     }
 
@@ -381,7 +394,16 @@ class EditorViewModel(application: Application, private val drawingId: String) :
 
     private fun performSave(entries: List<StrokeEntry>, spec: CanvasSpec) {
         repository.saveStrokes(drawingId, StrokeStore.encode(entries))
-        repository.updateCanvasSpec(drawingId, spec.width, spec.height, spec.backgroundColorArgb, spec.paperStyle, spec.paperSpacing, spec.shape)
+        repository.updateCanvasSpec(
+            id = drawingId, 
+            width = spec.width, 
+            height = spec.height, 
+            backgroundColorArgb = spec.backgroundColorArgb, 
+            background = spec.background,
+            paperStyle = spec.paperStyle, 
+            paperSpacing = spec.paperSpacing, 
+            shape = spec.shape
+        )
         if (spec.width > 0f && spec.height > 0f) {
             val thumbnail = CanvasExporter.renderThumbnail(getApplication(), spec, entries)
             repository.saveThumbnail(drawingId, CanvasExporter.toPngBytes(thumbnail))

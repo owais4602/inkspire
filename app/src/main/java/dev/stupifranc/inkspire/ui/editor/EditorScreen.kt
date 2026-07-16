@@ -285,11 +285,10 @@ fun EditorScreen(
                 TextButton(onClick = { showCanvasColorPicker = false }) { Text("Done") }
             },
             text = {
-                ColorPicker(
-                    colorArgb = viewModel.canvasSpec.backgroundColorArgb,
-                    recentColors = emptyList(),
-                    onColorChange = viewModel::setCanvasBackground,
-                    showAlphaSlider = false,
+                dev.stupifranc.inkspire.ui.components.CanvasBackgroundPicker(
+                    background = viewModel.canvasSpec.background,
+                    defaultColor = viewModel.canvasSpec.backgroundColorArgb,
+                    onBackgroundChange = viewModel::setCanvasBackground
                 )
             },
         )

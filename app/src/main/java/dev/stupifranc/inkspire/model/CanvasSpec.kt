@@ -5,6 +5,16 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+enum class BackgroundKind { FLAT, LINEAR, RADIAL }
+
+@Serializable
+data class CanvasBackground(
+    val kind: BackgroundKind = BackgroundKind.FLAT,
+    val colors: List<Int>,
+    val angleDegrees: Float = 0f
+)
+
+@Serializable
 enum class CanvasShape {
     RECTANGLE, ROUNDED_RECTANGLE,
 
@@ -19,6 +29,7 @@ data class CanvasSpec(
     val width: Float,
     val height: Float,
     val backgroundColorArgb: Int,
+    val background: CanvasBackground? = null,
     val paperStyle: PaperStyle = PaperStyle.PLAIN,
     val paperSpacing: Float = DEFAULT_PAPER_SPACING,
     val shape: CanvasShape = CanvasShape.RECTANGLE,

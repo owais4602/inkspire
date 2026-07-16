@@ -565,7 +565,13 @@ private fun GalleryPiece(
                 .fillMaxWidth()
                 .aspectRatio(ratio)
                 .clip(cornerShape)
-                .background(if (meta.backgroundColorArgb == 0) tokens.surface else Color(meta.backgroundColorArgb))
+                .background(
+                    when {
+                        meta.background != null && meta.background.colors.isNotEmpty() -> Color(meta.background.colors.first())
+                        meta.backgroundColorArgb == 0 -> tokens.surface
+                        else -> Color(meta.backgroundColorArgb)
+                    }
+                )
                 .then(if (prefs.borderEnabled) Modifier.border(1.dp, tokens.hairline, cornerShape) else Modifier),
         ) {
             val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, key1 = thumbnailPath, key2 = meta.updatedAtEpochMillis) {

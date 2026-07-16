@@ -47,7 +47,14 @@ class DrawingRepository(private val rootDir: File) {
         )
     }
 
-    fun createDrawing(name: String, width: Float, height: Float, backgroundColorArgb: Int, shape: dev.stupifranc.inkspire.model.CanvasShape = dev.stupifranc.inkspire.model.CanvasShape.RECTANGLE): DrawingMeta {
+    fun createDrawing(
+        name: String, 
+        width: Float, 
+        height: Float, 
+        backgroundColorArgb: Int, 
+        background: dev.stupifranc.inkspire.model.CanvasBackground? = null,
+        shape: dev.stupifranc.inkspire.model.CanvasShape = dev.stupifranc.inkspire.model.CanvasShape.RECTANGLE
+    ): DrawingMeta {
         val now = System.currentTimeMillis()
         val currentIndex = readIndex()
         val minOrder = currentIndex.minOfOrNull { it.orderIndex } ?: 0L
@@ -57,6 +64,7 @@ class DrawingRepository(private val rootDir: File) {
             width = width,
             height = height,
             backgroundColorArgb = backgroundColorArgb,
+            background = background,
             shape = shape,
             createdAtEpochMillis = now,
             updatedAtEpochMillis = now,
@@ -89,6 +97,7 @@ class DrawingRepository(private val rootDir: File) {
         width: Float,
         height: Float,
         backgroundColorArgb: Int,
+        background: dev.stupifranc.inkspire.model.CanvasBackground? = null,
         paperStyle: PaperStyle = PaperStyle.PLAIN,
         paperSpacing: Float = DEFAULT_PAPER_SPACING,
         shape: dev.stupifranc.inkspire.model.CanvasShape = dev.stupifranc.inkspire.model.CanvasShape.RECTANGLE,
@@ -98,6 +107,7 @@ class DrawingRepository(private val rootDir: File) {
                 width = width,
                 height = height,
                 backgroundColorArgb = backgroundColorArgb,
+                background = background,
                 paperStyle = paperStyle,
                 paperSpacing = paperSpacing,
                 shape = shape,

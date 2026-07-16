@@ -32,7 +32,43 @@ object CanvasExporter {
         val height = (canvasSpec.height * scale).toInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(canvasSpec.backgroundColorArgb)
+        if (canvasSpec.background != null && canvasSpec.background.colors.isNotEmpty()) {
+            val bg = canvasSpec.background
+            if (bg.colors.size == 1) {
+                canvas.drawColor(bg.colors.first())
+            } else {
+                val paint = android.graphics.Paint()
+                val colorsArray = bg.colors.toIntArray()
+                when (bg.kind) {
+                    dev.stupifranc.inkspire.model.BackgroundKind.FLAT -> {
+                        canvas.drawColor(colorsArray.first())
+                    }
+                    dev.stupifranc.inkspire.model.BackgroundKind.LINEAR -> {
+                        val cx = width / 2f
+                        val cy = height / 2f
+                        val angleRad = Math.toRadians(bg.angleDegrees.toDouble())
+                        val halfDiagonal = kotlin.math.hypot(cx.toDouble(), cy.toDouble()).toFloat()
+                        val dx = kotlin.math.cos(angleRad).toFloat() * halfDiagonal
+                        val dy = kotlin.math.sin(angleRad).toFloat() * halfDiagonal
+                        paint.shader = android.graphics.LinearGradient(
+                            cx - dx, cy - dy, cx + dx, cy + dy,
+                            colorsArray, null, android.graphics.Shader.TileMode.CLAMP
+                        )
+                        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+                    }
+                    dev.stupifranc.inkspire.model.BackgroundKind.RADIAL -> {
+                        val radius = maxOf(width.toFloat(), height.toFloat()) / 2f
+                        paint.shader = android.graphics.RadialGradient(
+                            width / 2f, height / 2f, radius.coerceAtLeast(1f),
+                            colorsArray, null, android.graphics.Shader.TileMode.CLAMP
+                        )
+                        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+                    }
+                }
+            }
+        } else {
+            canvas.drawColor(canvasSpec.backgroundColorArgb)
+        }
         PaperStyleRenderer.draw(canvas, canvasSpec, 0f, 0f, width.toFloat(), height.toFloat(), scale)
 
         val renderer = CanvasStrokeRenderer.create(InkTextures.getStore(context))

@@ -73,6 +73,11 @@ fun Minimap(
                     val scaleY = size.height / canvasSpec.height
                     val mapScale = minOf(scaleX, scaleY)
 
+                    // Gradient page fill (Surface's flat color underneath stays as the fallback)
+                    canvasSpec.background
+                        ?.toComposeBrush(androidx.compose.ui.geometry.Rect(Offset.Zero, size))
+                        ?.let { drawRect(brush = it, size = size) }
+
                     // Draw strokes
                     val mapViewport = Viewport(scale = mapScale, panX = 0f, panY = 0f)
                     val worldToScreen = mapViewport.toWorldToScreenMatrix()

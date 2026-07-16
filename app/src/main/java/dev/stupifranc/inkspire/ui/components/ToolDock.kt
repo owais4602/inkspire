@@ -276,15 +276,7 @@ private fun BrushesPanel(
     onSizeChange: (Float) -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // M10a set only — RAINBOW/NEON/AIRBRUSH stay hidden until their M10b recipes exist
-        // (BrushCatalog would silently fall back to a plain marker for them).
-        val mediaBrushes = listOf(
-            BrushFamilyChoice.PENCIL,
-            BrushFamilyChoice.WATERCOLOR,
-            BrushFamilyChoice.DRY_INK,
-            BrushFamilyChoice.CALLIGRAPHY,
-            BrushFamilyChoice.DASHED
-        )
+        val mediaBrushes = dev.stupifranc.inkspire.ui.editor.MEDIA_BRUSHES
         // A grid of media brushes (2 rows)
         val rows = mediaBrushes.chunked(4)
         rows.forEach { rowBrushes ->

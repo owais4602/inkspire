@@ -1,6 +1,8 @@
 package dev.stupifranc.inkspire.data
 
 import com.google.common.truth.Truth.assertThat
+import dev.stupifranc.inkspire.model.BackgroundKind
+import dev.stupifranc.inkspire.model.CanvasBackground
 import dev.stupifranc.inkspire.model.DEFAULT_PAPER_SPACING
 import dev.stupifranc.inkspire.model.PaperStyle
 import java.io.File
@@ -122,6 +124,58 @@ class DrawingRepositoryTest {
         assertThat(updated.width).isEqualTo(300f)
         assertThat(updated.height).isEqualTo(400f)
         assertThat(updated.backgroundColorArgb).isEqualTo(-16711936)
+    }
+
+    @Test
+    fun updateCanvasSpec_persistsLinearBackground() {
+        val repo = repository()
+        val meta = repo.createDrawing(name = "Gradient", width = 100f, height = 100f, backgroundColorArgb = 0)
+
+        val background = CanvasBackground(
+            kind = BackgroundKind.LINEAR,
+            colors = listOf(0xFF0000.toInt(), 0x00FF00.toInt()),
+            angleDegrees = 45f
+        )
+
+        repo.updateCanvasSpec(meta.id, width = 100f, height = 100f, backgroundColorArgb = 0, background = background)
+
+        val updated = repository().listDrawings().single()
+        assertThat(updated.background).isEqualTo(background)
+    }
+
+    @Test
+    fun updateCanvasSpec_persistsRadialBackground() {
+        val repo = repository()
+        val meta = repo.createDrawing(name = "Radial", width = 100f, height = 100f, backgroundColorArgb = 0)
+
+        val background = CanvasBackground(
+            kind = BackgroundKind.RADIAL,
+            colors = listOf(0xFFFF00FF.toInt(), 0xFF00FFFF.toInt()),
+        )
+
+        repo.updateCanvasSpec(meta.id, width = 100f, height = 100f, backgroundColorArgb = 0, background = background)
+
+        val updated = repository().listDrawings().single()
+        assertThat(updated.background).isEqualTo(background)
+    }
+
+    @Test
+    fun legacyIndexWithoutBackgroundField_decodesToNullBackgroundAndKeepsOldColor() {
+        // Forward-compat case: index.json written before M10b has no "background" key.
+        // It must decode with background == null (renderers then fall back to the flat
+        // backgroundColorArgb) and the old color untouched — old drawings open unchanged.
+        val indexFile = File(tempFolder.root, "index.json")
+        indexFile.writeText(
+            """
+            [{"id":"legacy-1","name":"Old drawing","width":800.0,"height":600.0,
+              "backgroundColorArgb":-256,
+              "createdAtEpochMillis":1,"updatedAtEpochMillis":1,"orderIndex":0}]
+            """.trimIndent()
+        )
+
+        val listed = repository().listDrawings().single()
+        assertThat(listed.background).isNull()
+        assertThat(listed.backgroundColorArgb).isEqualTo(-256)
     }
 
     @Test

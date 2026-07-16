@@ -40,6 +40,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import dev.stupifranc.inkspire.ui.components.toComposeBrush
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.input.motionprediction.MotionEventPredictor
 import androidx.ink.authoring.InProgressStrokeId
@@ -194,8 +195,13 @@ fun DrawingSurface(
             }
 
             // 3. Page background
-            val pageColor = if (currentCanvasSpec.backgroundColorArgb == 0) defaultPageColor else Color(currentCanvasSpec.backgroundColorArgb)
-            drawPageOutline(page, pageColor, currentCanvasSpec.shape)
+            val composeBrush = currentCanvasSpec.background?.toComposeBrush(page)
+            if (composeBrush != null) {
+                drawPageOutlineBrush(page, composeBrush, currentCanvasSpec.shape)
+            } else {
+                val pageColor = if (currentCanvasSpec.backgroundColorArgb == 0) defaultPageColor else Color(currentCanvasSpec.backgroundColorArgb)
+                drawPageOutline(page, pageColor, currentCanvasSpec.shape)
+            }
 
             // 4. Clip all ink and patterns to the page
             withShapeClip(page, currentCanvasSpec.shape) {
@@ -381,6 +387,19 @@ private fun DrawScope.drawPageOutline(
         CanvasShape.RECTANGLE -> drawRect(color, topLeft = page.topLeft, size = page.size, style = style)
         CanvasShape.ROUNDED_RECTANGLE -> drawRoundRect(color, topLeft = page.topLeft, size = page.size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx()), style = style)
         CanvasShape.CIRCLE -> circleBounds(page).let { drawOval(color, topLeft = it.topLeft, size = it.size, style = style) }
+    }
+}
+
+private fun DrawScope.drawPageOutlineBrush(
+    page: Rect,
+    brush: androidx.compose.ui.graphics.Brush,
+    shape: CanvasShape,
+    style: androidx.compose.ui.graphics.drawscope.DrawStyle = androidx.compose.ui.graphics.drawscope.Fill
+) {
+    when (shape) {
+        CanvasShape.RECTANGLE -> drawRect(brush, topLeft = page.topLeft, size = page.size, style = style)
+        CanvasShape.ROUNDED_RECTANGLE -> drawRoundRect(brush, topLeft = page.topLeft, size = page.size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx()), style = style)
+        CanvasShape.CIRCLE -> circleBounds(page).let { drawOval(brush, topLeft = it.topLeft, size = it.size, style = style) }
     }
 }
 
